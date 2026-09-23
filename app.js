@@ -11,9 +11,10 @@ let detectionBoxes = [];
 let layerSequence = 0;
 let customTextCounter = 20000;
 
-// Variables de Selección Múltiple y Párrafo
+// Variables de Selección Múltiple y Alineación
 let isMultiSelectMode = false;
 let multiSelectedItems = [];
+let currentParagraphAlign = 'justify';
 
 // =========================================================
 // CARGADOR SEGURO DE PDF-LIB
@@ -48,14 +49,13 @@ async function getSafePDFLib() {
 }
 
 // =========================================================
-// DETECCIÓN INTELIGENTE DE COLOR DE FONDO (SIN MANCHAS NI RASTROS)
+// DETECCIÓN INTELIGENTE DE COLOR DE FONDO
 // =========================================================
 function getAccurateBackgroundColor(ctx, boxX, boxY, boxW, boxH) {
   const cW = ctx.canvas.width;
   const cH = ctx.canvas.height;
   const samples = [];
 
-  // Muestrear a 4px de distancia del borde para no tocar las letras de la línea
   const topY = Math.max(0, boxY - 4);
   const botY = Math.min(cH - 1, boxY + boxH + 4);
   const stepX = Math.max(2, Math.floor(boxW / 24));
@@ -80,21 +80,16 @@ function getAccurateBackgroundColor(ctx, boxX, boxY, boxW, boxH) {
 
   if (samples.length === 0) return { r: 255, g: 255, b: 255, css: '#ffffff' };
 
-  // Calcular brillo de cada muestra
   const parsed = samples.map(p => ({
     r: p[0], g: p[1], b: p[2],
     luma: 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]
   }));
 
-  // Ordenar de más claro a más oscuro
   parsed.sort((a, b) => b.luma - a.luma);
-
-  // Descartar píxeles oscuros (letras adyacentes o líneas cercanas)
   const maxLuma = parsed[0].luma;
   const cleanBgCandidates = parsed.filter(p => p.luma >= Math.max(120, maxLuma - 35));
   const pool = cleanBgCandidates.length > 0 ? cleanBgCandidates : parsed;
 
-  // Tomar la mediana del fondo real
   const mid = Math.floor(pool.length / 2);
   const r = pool[mid].r;
   const g = pool[mid].g;
@@ -103,7 +98,6 @@ function getAccurateBackgroundColor(ctx, boxX, boxY, boxW, boxH) {
   return { r, g, b, css: `rgb(${r}, ${g}, ${b})` };
 }
 
-// Limpia el área eliminando las letras al 100% con su fondo exacto
 function cleanEraseArea(ctx, boxX, boxY, boxW, boxH) {
   const bg = getAccurateBackgroundColor(ctx, boxX, boxY, boxW, boxH);
   ctx.fillStyle = bg.css;
@@ -531,6 +525,7 @@ function updatePatchInList(item, isDeleted = false) {
       underline: item.currentUnderline || false,
       fontSize: item.currentPtSize,
       color: item.currentColor,
+      textAlign: item.textAlign || 'left',
       isDeleted: isDeleted,
       customX: item.textRender ? item.textRender.left : item.x,
       customY: item.textRender ? item.textRender.top : item.y
@@ -547,6 +542,7 @@ function updatePatchInList(item, isDeleted = false) {
       underline: item.underline || false,
       fontSize: item.fontSize / RENDER_SCALE,
       color: item.fill,
+      textAlign: item.textAlign || 'left',
       isDeleted: isDeleted,
       customX: item.left,
       customY: item.top
@@ -555,7 +551,7 @@ function updatePatchInList(item, isDeleted = false) {
 }
 
 // =========================================================
-// ELEMENTOS DOM Y FORMATO ENRIQUECIDO
+// ELEMENTOS DOM, FORMATO Y ALINEACIÓN DE PÁRRAFO
 // =========================================================
 const viewport = document.getElementById('viewport');
 const sheetWrapper = document.getElementById('sheet-wrapper');
@@ -576,6 +572,13 @@ const fontFamilySelect = document.getElementById('font-family-select');
 const btnToggleBold = document.getElementById('btn-toggle-bold');
 const btnToggleItalic = document.getElementById('btn-toggle-italic');
 const btnToggleUnderline = document.getElementById('btn-toggle-underline');
+
+// Botones de alineación
+const btnAlignLeft = document.getElementById('btn-align-left');
+const btnAlignCenter = document.getElementById('btn-align-center');
+const btnAlignRight = document.getElementById('btn-align-right');
+const btnAlignJustify = document.getElementById('btn-align-justify');
+
 const fontSizeInput = document.getElementById('font-size-input');
 const btnSizeDec = document.getElementById('btn-size-dec');
 const btnSizeInc = document.getElementById('btn-size-inc');
@@ -598,6 +601,27 @@ function applyCommandToSelection(cmd) {
   document.execCommand(cmd, false, null);
   updateEditorToolbarStates();
 }
+
+function setParagraphAlign(align) {
+  currentParagraphAlign = align;
+  inlineEditorInput.style.textAlign = align;
+
+  btnAlignLeft.classList.toggle('active', align === 'left');
+  btnAlignCenter.classList.toggle('active', align === 'center');
+  btnAlignRight.classList.toggle('active', align === 'right');
+  btnAlignJustify.classList.toggle('active', align === 'justify');
+
+  // Si estamos editando un párrafo en tiempo real, actualizar su visualización
+  if (currentTargetObject && (currentTargetObject.type === 'textbox' || currentTargetObject.isUnifiedParagraph)) {
+    currentTargetObject.set({ textAlign: align });
+    fabricCanvas.renderAll();
+  }
+}
+
+btnAlignLeft.addEventListener('click', () => setParagraphAlign('left'));
+btnAlignCenter.addEventListener('click', () => setParagraphAlign('center'));
+btnAlignRight.addEventListener('click', () => setParagraphAlign('right'));
+btnAlignJustify.addEventListener('click', () => setParagraphAlign('justify'));
 
 function updateEditorToolbarStates() {
   btnToggleBold.classList.toggle('active', document.queryCommandState('bold'));
@@ -897,7 +921,7 @@ function updateMultiSelectUI() {
 
   if (count >= 2) {
     btnMergeJustify.style.display = 'flex';
-    btnMergeText.textContent = `Justificar (${count})`;
+    btnMergeText.textContent = `Crear Párrafo (${count})`;
   } else {
     btnMergeJustify.style.display = 'none';
   }
@@ -919,7 +943,7 @@ btnMultiSelect.addEventListener('click', (e) => {
 
 btnMergeJustify.addEventListener('click', () => {
   if (multiSelectedItems.length < 2) {
-    alert('Selecciona al menos 2 líneas para unirlas en un párrafo justificado.');
+    alert('Selecciona al menos 2 líneas para unirlas en un párrafo.');
     return;
   }
 
@@ -1053,6 +1077,7 @@ btnMergeJustify.addEventListener('click', () => {
   paragraphObj.customId = ++customTextCounter;
   paragraphObj.layerNum = ++layerSequence;
   paragraphObj.runs = combinedRuns;
+  paragraphObj.textAlign = 'justify';
   paragraphObj.originalLines = itemsWithMetrics;
 
   fabricCanvas.add(paragraphObj);
@@ -1296,6 +1321,7 @@ async function buildNativeDetectionBoxes() {
     line.currentUnderline = false;
     line.currentPtSize = Math.round(line.origPdfH);
     line.currentColor = '#000000';
+    line.textAlign = 'left';
     line.textRender = null;
     line.firstEraseData = null;
 
@@ -1360,6 +1386,8 @@ function openEditorForTarget(target) {
   currentTargetObject = target;
   hidePrecisionTools();
 
+  let initialAlign = 'left';
+
   if (target.isDetectionBox) {
     const line = target.lineData;
     inlineEditorInput.innerHTML = runsToHtml(line.runs, line.isEdited ? line.currentStr : line.fullStr, line.currentBold, line.currentItalic, line.currentUnderline);
@@ -1368,6 +1396,7 @@ function openEditorForTarget(target) {
     fontFamilySelect.value = line.isEdited ? line.currentFamily : line.family;
     fontSizeInput.value = line.isEdited ? line.currentPtSize : Math.round(line.origPdfH);
     fontColorPicker.value = line.isEdited ? line.currentColor : '#000000';
+    initialAlign = line.textAlign || 'left';
   } else if (target.parentLine) {
     const line = target.parentLine;
     inlineEditorInput.innerHTML = runsToHtml(line.runs, line.currentStr, line.currentBold, line.currentItalic, line.currentUnderline);
@@ -1376,15 +1405,18 @@ function openEditorForTarget(target) {
     fontFamilySelect.value = line.currentFamily;
     fontSizeInput.value = line.currentPtSize;
     fontColorPicker.value = line.currentColor;
+    initialAlign = line.textAlign || 'left';
   } else if (target.isCustomPdfText || target.type === 'textbox') {
     inlineEditorInput.innerHTML = runsToHtml(target.runs, target.text, target.fontWeight === 'bold', target.fontStyle === 'italic', !!target.underline);
-    editorTitle.textContent = `✏️ Modificar Texto (Capa #${target.layerNum})`;
+    editorTitle.textContent = target.isUnifiedParagraph ? `📑 Modificar Párrafo (Capa #${target.layerNum})` : `✏️ Modificar Texto (Capa #${target.layerNum})`;
 
     fontFamilySelect.value = target.fontFamily || 'Arial';
     fontSizeInput.value = Math.round(target.fontSize / RENDER_SCALE);
     fontColorPicker.value = target.fill || '#000000';
+    initialAlign = target.textAlign || (target.isUnifiedParagraph ? 'justify' : 'left');
   }
 
+  setParagraphAlign(initialAlign);
   updateEditorToolbarStates();
 
   layerBadge.style.display = 'inline-block';
@@ -1410,7 +1442,7 @@ btnCenterText.addEventListener('click', () => {
     fabricCanvas.renderAll();
     if (active.parentLine) updatePatchInList(active.parentLine);
     else if (active.isCustomPdfText) updatePatchInList(active);
-    statusBadge.textContent = 'Texto centrado';
+    statusBadge.textContent = 'Texto centrado en la página';
   }
 });
 
@@ -1430,6 +1462,7 @@ btnAddText.addEventListener('click', () => {
   btnToggleUnderline.classList.remove('active');
   fontSizeInput.value = '16';
   fontColorPicker.value = '#000000';
+  setParagraphAlign('left');
 
   layerBadge.style.display = 'inline-block';
   layerBadge.textContent = `Capa #${layerSequence + 1}`;
@@ -1469,6 +1502,7 @@ btnApplyText.addEventListener('click', () => {
       fontSize: chosenPtSize * RENDER_SCALE,
       fontFamily: chosenFamily,
       fill: chosenColor,
+      textAlign: currentParagraphAlign,
       styles: charStyles,
       selectable: true,
       hasControls: true,
@@ -1479,6 +1513,7 @@ btnApplyText.addEventListener('click', () => {
     newTextObj.customId = ++customTextCounter;
     newTextObj.layerNum = ++layerSequence;
     newTextObj.runs = runs;
+    newTextObj.textAlign = currentParagraphAlign;
 
     fabricCanvas.add(newTextObj);
     fabricCanvas.setActiveObject(newTextObj);
@@ -1500,9 +1535,11 @@ btnApplyText.addEventListener('click', () => {
       fontFamily: chosenFamily,
       fontSize: chosenPtSize * RENDER_SCALE,
       fill: chosenColor,
+      textAlign: currentParagraphAlign,
       styles: charStyles
     });
     currentTargetObject.runs = runs;
+    currentTargetObject.textAlign = currentParagraphAlign;
     currentTargetObject.setCoords();
     fabricCanvas.renderAll();
 
@@ -1527,6 +1564,7 @@ btnApplyText.addEventListener('click', () => {
     underline: lineData.currentUnderline || false,
     ptSize: lineData.currentPtSize,
     color: lineData.currentColor,
+    textAlign: lineData.textAlign || 'left',
     runs: lineData.runs,
     textRender: lineData.textRender
   };
@@ -1572,6 +1610,7 @@ btnApplyText.addEventListener('click', () => {
     fontSize: chosenPtSize * RENDER_SCALE,
     fontFamily: chosenFamily,
     fill: chosenColor,
+    textAlign: currentParagraphAlign,
     styles: charStyles,
     selectable: true,
     hasControls: true,
@@ -1581,6 +1620,7 @@ btnApplyText.addEventListener('click', () => {
   newTextRender.parentLine = lineData;
   newTextRender.layerNum = lineData.id;
   newTextRender.runs = runs;
+  newTextRender.textAlign = currentParagraphAlign;
 
   fabricCanvas.add(newTextRender);
   fabricCanvas.setActiveObject(newTextRender);
@@ -1590,6 +1630,7 @@ btnApplyText.addEventListener('click', () => {
   lineData.currentFamily = chosenFamily;
   lineData.currentPtSize = chosenPtSize;
   lineData.currentColor = chosenColor;
+  lineData.textAlign = currentParagraphAlign;
   lineData.runs = runs;
   lineData.textRender = newTextRender;
 
@@ -1604,6 +1645,7 @@ btnApplyText.addEventListener('click', () => {
     family: chosenFamily,
     ptSize: chosenPtSize,
     color: chosenColor,
+    textAlign: currentParagraphAlign,
     runs: runs,
     textRender: newTextRender
   };
@@ -1688,7 +1730,7 @@ btnResetZoom.addEventListener('click', () => {
 });
 
 // =========================================================
-// DESCARGA DEL PDF (MÁSCARA EXACTA SIN RESIDUOS)
+// DESCARGA DEL PDF (ALINEACIÓN IZQ / CENTRO / DER / JUSTIFICADO)
 // =========================================================
 function base64ToUint8Array(dataUrl) {
   const base64 = dataUrl.split(',')[1];
@@ -1807,11 +1849,11 @@ btnSave.addEventListener('click', async () => {
       return res ? PDFLibEngine.rgb(parseInt(res[1], 16) / 255, parseInt(res[2], 16) / 255, parseInt(res[3], 16) / 255) : PDFLibEngine.rgb(0, 0, 0);
     }
 
-    // 1. Modificaciones de texto y párrafos (tapando las letras con máscara exacta)
+    // 1. Modificaciones de texto y párrafos (con soporte de alineación)
     for (const patch of modifiedTextPatches) {
       if (patch.isDeleted) continue;
 
-      // Párrafos unificados y justificados
+      // Párrafos completos unificados
       if (patch.isUnifiedParagraph) {
         if (patch.originalLines && patch.originalLines.length > 0) {
           patch.originalLines.forEach(item => {
@@ -1831,6 +1873,9 @@ btnSave.addEventListener('click', async () => {
 
         const styledWords = getStyledWordsFromRuns(patch.runs || [{ text: patch.newText, bold: false, italic: false, underline: false }]);
         const maxLineWidth = patch.width;
+        const alignMode = patch.textAlign || 'justify';
+        const defaultSpaceWidth = mapFont(patch.fontFamily, false, false).widthOfTextAtSize(' ', patch.fontSize);
+
         const wrappedLines = wrapStyledWordsForPdf(styledWords, patch.fontFamily, patch.fontSize, maxLineWidth, mapFont);
         let curY = pH - (patch.customY / RENDER_SCALE) - patch.fontSize;
         const lineSpacing = patch.fontSize * (patch.lineHeight || 1.25);
@@ -1846,11 +1891,24 @@ btnSave.addEventListener('click', async () => {
           }, 0);
 
           const gaps = nonSpaces.length - 1;
-          const spaceWidth = (gaps > 0 && !isLastLine)
-            ? Math.max(4, (maxLineWidth - totalWordsWidth) / gaps)
-            : mapFont(patch.fontFamily, false, false).widthOfTextAtSize(' ', patch.fontSize);
+          let spaceWidth = defaultSpaceWidth;
+          let lineStartX = patch.customX / RENDER_SCALE;
 
-          let curX = patch.customX / RENDER_SCALE;
+          // Cálculo según tipo de alineación
+          if (alignMode === 'justify' && !isLastLine && gaps > 0) {
+            spaceWidth = Math.max(3, (maxLineWidth - totalWordsWidth) / gaps);
+            lineStartX = patch.customX / RENDER_SCALE;
+          } else if (alignMode === 'center') {
+            const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
+            lineStartX = (patch.customX / RENDER_SCALE) + Math.max(0, (maxLineWidth - lineTotalW) / 2);
+          } else if (alignMode === 'right') {
+            const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
+            lineStartX = (patch.customX / RENDER_SCALE) + Math.max(0, maxLineWidth - lineTotalW);
+          } else { // 'left' o última línea de justificado
+            lineStartX = patch.customX / RENDER_SCALE;
+          }
+
+          let curX = lineStartX;
           for (let wIdx = 0; wIdx < nonSpaces.length; wIdx++) {
             const wordObj = nonSpaces[wIdx];
             const wFont = mapFont(patch.fontFamily, wordObj.bold, wordObj.italic);
