@@ -17,7 +17,7 @@ let multiSelectedItems = [];
 let currentParagraphAlign = 'justify';
 let isResizeModeActive = false;
 
-// Expresión regular para detectar viñetas, guiones, numeración o incisos
+// Expresión regular para detectar viñetas o numeraciones
 const LIST_ITEM_REGEX = /^([•\-\*–—]\s+|\d+[\.\)]\s+|[a-zA-Z][\.\)]\s+)/;
 
 // =========================================================
@@ -222,26 +222,11 @@ function stripPrefixFromLineRuns(lineRuns, regex) {
   return cloned;
 }
 
+// Alternar viñetas o numeraciones en las líneas seleccionadas del editor
 function toggleListFormat(type) {
   const rawRuns = parseHtmlToRuns(inlineEditorInput);
   const runs = simplifyRuns(rawRuns);
   const lines = splitRunsIntoLines(runs);
-
-  const bulletRegex = /^•\s+/;
-  let allAlreadyBullet = true;
-  let allAlreadyNumber = true;
-  let nonBlankCount = 0;
-
-  lines.forEach(lineRuns => {
-    const lineText = lineRuns.map(r => r.text).join('').trim();
-    if (lineText.length > 0) {
-      nonBlankCount++;
-      if (!bulletRegex.test(lineText)) allAlreadyBullet = false;
-      if (!new RegExp(`^${nonBlankCount}[\\.\\)]\\s+`).test(lineText)) allAlreadyNumber = false;
-    }
-  });
-
-  if (nonBlankCount === 0) return;
 
   let numberCounter = 1;
   const newLines = lines.map(lineRuns => {
@@ -251,14 +236,10 @@ function toggleListFormat(type) {
     let stripped = stripPrefixFromLineRuns(lineRuns, LIST_ITEM_REGEX);
 
     if (type === 'bullet') {
-      if (!allAlreadyBullet) {
-        stripped.unshift({ text: '• ', bold: false, italic: false, underline: false });
-      }
+      stripped.unshift({ text: '• ', bold: false, italic: false, underline: false });
     } else if (type === 'number') {
-      if (!allAlreadyNumber) {
-        stripped.unshift({ text: `${numberCounter}. `, bold: false, italic: false, underline: false });
-        numberCounter++;
-      }
+      stripped.unshift({ text: `${numberCounter}. `, bold: false, italic: false, underline: false });
+      numberCounter++;
     }
     return stripped;
   });
@@ -274,6 +255,41 @@ function toggleListFormat(type) {
   updateListToolbarStates(resultRuns);
 }
 
+// Aumentar o disminuir sangría para sublistas multinivel
+function adjustListIndent(increment = true) {
+  const rawRuns = parseHtmlToRuns(inlineEditorInput);
+  const runs = simplifyRuns(rawRuns);
+  const lines = splitRunsIntoLines(runs);
+
+  const newLines = lines.map(lineRuns => {
+    const fullLineText = lineRuns.map(r => r.text).join('');
+    if (!fullLineText.trim().length) return lineRuns;
+
+    const cloned = lineRuns.map(r => ({ ...r }));
+    if (increment) {
+      cloned.unshift({ text: '    ', bold: false, italic: false, underline: false });
+    } else {
+      if (cloned.length > 0 && cloned[0].text.startsWith('    ')) {
+        cloned[0].text = cloned[0].text.slice(4);
+        if (cloned[0].text.length === 0) cloned.shift();
+      } else if (cloned.length > 0 && cloned[0].text.startsWith('  ')) {
+        cloned[0].text = cloned[0].text.slice(2);
+        if (cloned[0].text.length === 0) cloned.shift();
+      }
+    }
+    return cloned;
+  });
+
+  let resultRuns = [];
+  newLines.forEach((lRuns, idx) => {
+    if (idx > 0) resultRuns.push({ text: '\n', bold: false, italic: false, underline: false });
+    resultRuns = resultRuns.concat(lRuns);
+  });
+  resultRuns = simplifyRuns(resultRuns);
+
+  inlineEditorInput.innerHTML = runsToHtml(resultRuns);
+}
+
 function updateListToolbarStates(runs) {
   const lines = splitRunsIntoLines(runs || parseHtmlToRuns(inlineEditorInput));
   let hasBullets = false;
@@ -281,7 +297,7 @@ function updateListToolbarStates(runs) {
 
   lines.forEach(lineRuns => {
     const text = lineRuns.map(r => r.text).join('').trim();
-    if (/^•\s+/.test(text)) hasBullets = true;
+    if (/^[•\-\*–—]\s+/.test(text)) hasBullets = true;
     if (/^\d+[\.\)]\s+/.test(text)) hasNumbers = true;
   });
 
@@ -680,9 +696,11 @@ const btnToggleBold = document.getElementById('btn-toggle-bold');
 const btnToggleItalic = document.getElementById('btn-toggle-italic');
 const btnToggleUnderline = document.getElementById('btn-toggle-underline');
 
-// Botones de Listas
+// Botones de Listas y Sangrías
 const btnListBullet = document.getElementById('btn-list-bullet');
 const btnListNumber = document.getElementById('btn-list-number');
+const btnIndentInc = document.getElementById('btn-indent-inc');
+const btnIndentDec = document.getElementById('btn-indent-dec');
 
 // Botones de alineación
 const btnAlignLeft = document.getElementById('btn-align-left');
@@ -743,6 +761,16 @@ btnListNumber.addEventListener('click', (e) => {
   toggleListFormat('number');
 });
 
+btnIndentInc.addEventListener('click', (e) => {
+  e.preventDefault();
+  adjustListIndent(true);
+});
+
+btnIndentDec.addEventListener('click', (e) => {
+  e.preventDefault();
+  adjustListIndent(false);
+});
+
 function updateEditorToolbarStates() {
   btnToggleBold.classList.toggle('active', document.queryCommandState('bold'));
   btnToggleItalic.classList.toggle('active', document.queryCommandState('italic'));
@@ -756,6 +784,8 @@ function updateEditorToolbarStates() {
   btnToggleUnderline.addEventListener(evt, e => e.preventDefault());
   btnListBullet.addEventListener(evt, e => e.preventDefault());
   btnListNumber.addEventListener(evt, e => e.preventDefault());
+  btnIndentInc.addEventListener(evt, e => e.preventDefault());
+  btnIndentDec.addEventListener(evt, e => e.preventDefault());
 });
 
 btnToggleBold.addEventListener('click', e => {
@@ -1127,19 +1157,27 @@ btnMergeJustify.addEventListener('click', () => {
   let combinedRuns = [];
   itemsWithMetrics.forEach((item, idx) => {
     const isListItem = LIST_ITEM_REGEX.test(item.text.trim());
+    const isSublistByIndent = (item.x - minX) > 18;
+
+    let itemRuns = item.runs ? item.runs.map(r => ({ ...r })) : [{ text: item.text, bold: false, italic: false, underline: false }];
+
+    // Si tiene sangría hacia la derecha (sublista), añadir prefijo de espacio
+    if (isSublistByIndent && !itemRuns[0].text.startsWith('    ')) {
+      itemRuns.unshift({ text: '    ', bold: false, italic: false, underline: false });
+    }
 
     if (idx > 0 && combinedRuns.length > 0) {
       const lastRun = combinedRuns[combinedRuns.length - 1];
       if (lastRun.text.endsWith('-')) {
         lastRun.text = lastRun.text.slice(0, -1);
-      } else if (isListItem) {
-        // Si detecta viñeta o numeración, separa con salto de línea
+      } else if (isListItem || isSublistByIndent) {
         combinedRuns.push({ text: '\n', bold: false, italic: false, underline: false });
       } else {
-        combinedRuns.push({ text: ' ', bold: false, italic: false, underline: false });
+        // Párrafo dependiente o renglón siguiente: mantener salto limpio
+        combinedRuns.push({ text: '\n', bold: false, italic: false, underline: false });
       }
     }
-    combinedRuns = combinedRuns.concat(item.runs || [{ text: item.text, bold: false, italic: false, underline: false }]);
+    combinedRuns = combinedRuns.concat(itemRuns);
   });
   combinedRuns = simplifyRuns(combinedRuns);
 
@@ -1190,9 +1228,9 @@ btnMergeJustify.addEventListener('click', () => {
     fontSize: baseFontSize * RENDER_SCALE,
     fontFamily: baseFontFamily,
     fill: baseColor,
-    textAlign: 'justify',
+    textAlign: 'left',
     splitByGrapheme: false,
-    lineHeight: 1.25,
+    lineHeight: 1.3,
     styles: createFabricStylesFromRuns(combinedRuns),
     selectable: true,
     hasControls: true,
@@ -1205,7 +1243,7 @@ btnMergeJustify.addEventListener('click', () => {
   paragraphObj.customId = ++customTextCounter;
   paragraphObj.layerNum = ++layerSequence;
   paragraphObj.runs = combinedRuns;
-  paragraphObj.textAlign = 'justify';
+  paragraphObj.textAlign = 'left';
   paragraphObj.originalLines = itemsWithMetrics;
 
   fabricCanvas.add(paragraphObj);
@@ -1224,7 +1262,7 @@ btnMergeJustify.addEventListener('click', () => {
   clearMultiSelectionStyles();
   showPrecisionTools();
   btnToggleResize.style.display = 'flex';
-  statusBadge.textContent = '¡Párrafo unificado con fondo limpio!';
+  statusBadge.textContent = '¡Estructura de lista y párrafos lista!';
 });
 
 // =========================================================
@@ -1648,7 +1686,7 @@ function openEditorForTarget(target) {
     fontFamilySelect.value = target.fontFamily || 'Arial';
     fontSizeInput.value = Math.round(target.fontSize / RENDER_SCALE);
     fontColorPicker.value = target.fill || '#000000';
-    initialAlign = target.textAlign || (target.isUnifiedParagraph ? 'justify' : 'left');
+    initialAlign = target.textAlign || (target.isUnifiedParagraph ? 'left' : 'left');
   }
 
   setParagraphAlign(initialAlign);
@@ -1967,7 +2005,7 @@ btnResetZoom.addEventListener('click', () => {
 });
 
 // =========================================================
-// DESCARGA DEL PDF (RESPETO DE SALTOS DE LÍNEA Y LISTAS)
+// DESCARGA DEL PDF CON SANGRÍA FRANCESA Y SUBLISTAS
 // =========================================================
 function base64ToUint8Array(dataUrl) {
   const base64 = dataUrl.split(',')[1];
@@ -1983,13 +2021,12 @@ function base64ToUint8Array(dataUrl) {
 function getStyledWordsFromRuns(runs) {
   const words = [];
   (runs || []).forEach(run => {
-    const parts = run.text.split(/(\n|[^\S\n]+)/);
+    const parts = run.text.split(/(\s+)/);
     parts.forEach(part => {
       if (!part) return;
       words.push({
         text: part,
-        isNewline: part === '\n',
-        isSpace: /^[^\S\n]+$/.test(part),
+        isSpace: /^\s+$/.test(part),
         bold: !!run.bold,
         italic: !!run.italic,
         underline: !!run.underline
@@ -1999,23 +2036,12 @@ function getStyledWordsFromRuns(runs) {
   return words;
 }
 
-function wrapStyledWordsForPdf(styledWords, defaultFontFamily, fontSize, maxWidth, mapFontFn) {
+function wrapWordsForBlock(styledWords, defaultFontFamily, fontSize, maxWidth, mapFontFn) {
   const lines = [];
   let currentLine = [];
   let currentLineWidth = 0;
 
   for (const item of styledWords) {
-    if (item.isNewline) {
-      while (currentLine.length > 0 && currentLine[currentLine.length - 1].isSpace) {
-        currentLine.pop();
-      }
-      currentLine.isHardBreak = true;
-      lines.push(currentLine);
-      currentLine = [];
-      currentLineWidth = 0;
-      continue;
-    }
-
     if (item.isSpace) {
       if (currentLine.length > 0) currentLine.push(item);
       continue;
@@ -2100,7 +2126,7 @@ btnSave.addEventListener('click', async () => {
       return res ? PDFLibEngine.rgb(parseInt(res[1], 16) / 255, parseInt(res[2], 16) / 255, parseInt(res[3], 16) / 255) : PDFLibEngine.rgb(0, 0, 0);
     }
 
-    // 1. Modificaciones de texto y párrafos (con soporte de alineación y listas)
+    // 1. Modificaciones de texto y párrafos (con sangría francesa y soporte de listas)
     for (const patch of modifiedTextPatches) {
       if (patch.isDeleted) continue;
 
@@ -2121,72 +2147,134 @@ btnSave.addEventListener('click', async () => {
           });
         }
 
-        const styledWords = getStyledWordsFromRuns(patch.runs || [{ text: patch.newText, bold: false, italic: false, underline: false }]);
         const maxLineWidth = patch.width;
         const alignMode = patch.textAlign || 'justify';
-        const defaultSpaceWidth = mapFont(patch.fontFamily, false, false).widthOfTextAtSize(' ', patch.fontSize);
-
-        const wrappedLines = wrapStyledWordsForPdf(styledWords, patch.fontFamily, patch.fontSize, maxLineWidth, mapFont);
+        const lineSpacing = patch.fontSize * (patch.lineHeight || 1.3);
         let curY = pH - (patch.customY / RENDER_SCALE) - patch.fontSize;
-        const lineSpacing = patch.fontSize * (patch.lineHeight || 1.25);
 
-        for (let lIdx = 0; lIdx < wrappedLines.length; lIdx++) {
-          const lineWords = wrappedLines[lIdx];
-          const isLastLine = (lIdx === wrappedLines.length - 1) || lineWords.isHardBreak;
-          const nonSpaces = lineWords.filter(it => !it.isSpace && !it.isNewline);
+        // Separar párrafos e ítems por salto de línea
+        const rawLines = splitRunsIntoLines(patch.runs || [{ text: patch.newText, bold: false, italic: false, underline: false }]);
+        let lastBulletLevel = 0;
+        let hasActiveBullet = false;
 
-          const totalWordsWidth = nonSpaces.reduce((acc, it) => {
-            const f = mapFont(patch.fontFamily, it.bold, it.italic);
-            return acc + f.widthOfTextAtSize(it.text, patch.fontSize);
-          }, 0);
-
-          const gaps = nonSpaces.length - 1;
-          let spaceWidth = defaultSpaceWidth;
-          let lineStartX = patch.customX / RENDER_SCALE;
-
-          if (alignMode === 'justify' && !isLastLine && gaps > 0) {
-            spaceWidth = Math.max(3, (maxLineWidth - totalWordsWidth) / gaps);
-            lineStartX = patch.customX / RENDER_SCALE;
-          } else if (alignMode === 'center') {
-            const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
-            lineStartX = (patch.customX / RENDER_SCALE) + Math.max(0, (maxLineWidth - lineTotalW) / 2);
-          } else if (alignMode === 'right') {
-            const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
-            lineStartX = (patch.customX / RENDER_SCALE) + Math.max(0, maxLineWidth - lineTotalW);
-          } else {
-            lineStartX = patch.customX / RENDER_SCALE;
+        for (const lineRuns of rawLines) {
+          const lineStr = lineRuns.map(r => r.text).join('');
+          if (!lineStr.trim().length) {
+            curY -= lineSpacing * 0.5;
+            continue;
           }
 
-          let curX = lineStartX;
-          for (let wIdx = 0; wIdx < nonSpaces.length; wIdx++) {
-            const wordObj = nonSpaces[wIdx];
-            const wFont = mapFont(patch.fontFamily, wordObj.bold, wordObj.italic);
+          // Detectar espacios de sangría
+          const spaceMatch = lineStr.match(/^(\s*)/);
+          const spaceCount = spaceMatch ? spaceMatch[1].length : 0;
+          let level = Math.floor(spaceCount / 2);
 
-            page.drawText(wordObj.text, {
-              x: curX,
+          // Limpiar espacios al inicio
+          let trimmedRuns = lineRuns.map(r => ({ ...r }));
+          if (trimmedRuns.length > 0 && spaceCount > 0) {
+            trimmedRuns[0].text = trimmedRuns[0].text.replace(/^\s+/, '');
+            if (!trimmedRuns[0].text.length) trimmedRuns.shift();
+          }
+
+          const trimmedText = trimmedRuns.map(r => r.text).join('');
+          const bulletMatch = trimmedText.match(LIST_ITEM_REGEX);
+
+          let bulletStr = '';
+          let contentRuns = trimmedRuns;
+
+          if (bulletMatch) {
+            bulletStr = bulletMatch[1].trim();
+            contentRuns = stripPrefixFromLineRuns(trimmedRuns, LIST_ITEM_REGEX);
+            hasActiveBullet = true;
+            lastBulletLevel = level;
+          } else if (hasActiveBullet && level === 0 && spaceCount === 0) {
+            // Párrafo perteneciente a la viñeta superior
+            level = lastBulletLevel;
+          }
+
+          // Geometría de sangría francesa (Hanging Indent)
+          const levelIndent = level * 16;
+          const bulletGutter = 16; // Distancia fija que separa el número/viñeta del párrafo
+
+          const bulletX = (patch.customX / RENDER_SCALE) + levelIndent;
+          const textStartX = (patch.customX / RENDER_SCALE) + levelIndent + bulletGutter;
+          const blockAvailableWidth = Math.max(40, maxLineWidth - (levelIndent + bulletGutter));
+
+          // Dibujar la viñeta o número en su propia columna a la izquierda
+          if (bulletStr) {
+            const bFont = mapFont(patch.fontFamily, true, false);
+            page.drawText(bulletStr, {
+              x: bulletX,
               y: curY,
               size: patch.fontSize,
-              font: wFont,
+              font: bFont,
               color: hexToRgb(patch.color)
             });
+          }
 
-            const wWidth = wFont.widthOfTextAtSize(wordObj.text, patch.fontSize);
-            if (wordObj.underline) {
-              page.drawLine({
-                start: { x: curX, y: curY - 2 },
-                end: { x: curX + wWidth, y: curY - 2 },
-                thickness: Math.max(0.8, patch.fontSize * 0.065),
+          // Envolver y dibujar el párrafo a la derecha sin tocar la columna izquierda
+          const styledWords = getStyledWordsFromRuns(contentRuns);
+          const wrappedBlockLines = wrapWordsForBlock(styledWords, patch.fontFamily, patch.fontSize, blockAvailableWidth, mapFont);
+          const defaultSpaceWidth = mapFont(patch.fontFamily, false, false).widthOfTextAtSize(' ', patch.fontSize);
+
+          for (let lIdx = 0; lIdx < wrappedBlockLines.length; lIdx++) {
+            const lineWords = wrappedBlockLines[lIdx];
+            const isLastLine = (lIdx === wrappedBlockLines.length - 1);
+            const nonSpaces = lineWords.filter(it => !it.isSpace);
+
+            const totalWordsWidth = nonSpaces.reduce((acc, it) => {
+              const f = mapFont(patch.fontFamily, it.bold, it.italic);
+              return acc + f.widthOfTextAtSize(it.text, patch.fontSize);
+            }, 0);
+
+            const gaps = nonSpaces.length - 1;
+            let spaceWidth = defaultSpaceWidth;
+            let lineX = textStartX;
+
+            if (alignMode === 'justify' && !isLastLine && gaps > 0) {
+              spaceWidth = Math.max(3, (blockAvailableWidth - totalWordsWidth) / gaps);
+              lineX = textStartX;
+            } else if (alignMode === 'center') {
+              const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
+              lineX = textStartX + Math.max(0, (blockAvailableWidth - lineTotalW) / 2);
+            } else if (alignMode === 'right') {
+              const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
+              lineX = textStartX + Math.max(0, blockAvailableWidth - lineTotalW);
+            } else {
+              lineX = textStartX;
+            }
+
+            let curWordX = lineX;
+            for (let wIdx = 0; wIdx < nonSpaces.length; wIdx++) {
+              const wordObj = nonSpaces[wIdx];
+              const wFont = mapFont(patch.fontFamily, wordObj.bold, wordObj.italic);
+
+              page.drawText(wordObj.text, {
+                x: curWordX,
+                y: curY,
+                size: patch.fontSize,
+                font: wFont,
                 color: hexToRgb(patch.color)
               });
+
+              const wWidth = wFont.widthOfTextAtSize(wordObj.text, patch.fontSize);
+              if (wordObj.underline) {
+                page.drawLine({
+                  start: { x: curWordX, y: curY - 2 },
+                  end: { x: curWordX + wWidth, y: curY - 2 },
+                  thickness: Math.max(0.8, patch.fontSize * 0.065),
+                  color: hexToRgb(patch.color)
+                });
+              }
+              curWordX += wWidth + (wIdx < nonSpaces.length - 1 ? spaceWidth : 0);
             }
-            curX += wWidth + (wIdx < nonSpaces.length - 1 ? spaceWidth : 0);
+            curY -= lineSpacing;
           }
-          curY -= lineSpacing;
         }
         continue;
       }
 
-      // Líneas individuales modificadas
+      // Líneas individuales
       if (patch.originalLine && patch.originalLine.firstEraseData) {
         const b = patch.originalLine.firstEraseData.box;
         const bg = patch.originalLine.firstEraseData.bgColor || { r: 255, g: 255, b: 255 };
