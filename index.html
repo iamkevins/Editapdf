@@ -1,1 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Editor PDF Pro - Con Cruceta, Grilla y Fondo Intacto</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@600&family=Dancing+Script:wght@600&family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;700&family=Lato:wght@400;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;700&family=Nunito:wght@400;700&family=Open+Sans:wght@400;700&family=Oswald:wght@500&family=Pacifico&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Poppins:wght@400;600;700&family=Raleway:wght@400;700&family=Roboto:wght@400;700&family=Rubik:wght@400;600&display=swap" rel="stylesheet">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.9/dist/pdf-lib.min.js"></script>
+  <script>
+    if (!window.PDFLib && !window.pdfLib) {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"><\/script>');
+    }
+  </script>
+
+  <link rel="stylesheet" href="./style.css?v=8">
+</head>
+<body>
+
+  <header class="top-nav">
+    <div class="history-controls">
+      <button id="btn-undo" class="nav-btn" disabled title="Deshacer (Ctrl+Z)">
+        <span class="icon">↶</span>
+      </button>
+      <button id="btn-redo" class="nav-btn" disabled title="Rehacer (Ctrl+Y)">
+        <span class="icon">↷</span>
+      </button>
+      <button id="btn-quick-delete" class="nav-btn btn-x-delete" title="Eliminar selección">
+        <span class="icon">✕</span>
+      </button>
+      <button id="btn-edit-selected" class="nav-btn btn-edit-nav" disabled title="Modificar texto de esta capa">
+        <span class="icon">✏️</span>
+      </button>
+
+      <button id="btn-multiselect" class="nav-btn btn-multiselect" style="display: none;" title="Activar selección de más líneas">
+        <span class="multi-dot">●</span>
+        <span id="multiselect-count" class="multi-count">1</span>
+      </button>
+
+      <button id="btn-merge-justify" class="nav-btn btn-merge-justify" style="display: none;" title="Unir líneas y justificar como párrafo">
+        <span class="icon">📑</span>
+        <span id="btn-merge-text">Justificar</span>
+      </button>
+    </div>
+    
+    <div class="status-container">
+      <span id="layer-badge" class="layer-badge" style="display: none;">Capa --</span>
+      <span id="status-badge" class="status-badge">Sin documento</span>
+    </div>
+  </header>
+
+  <main id="viewport">
+    <div id="empty-state">
+      <div style="font-size: 48px; margin-bottom: 8px;">📄</div>
+      <div style="font-size: 18px; font-weight: 700; color: #f8fafc;">Ningún archivo abierto</div>
+      <div style="font-size: 14px; color: #94a3b8; margin-top: 6px;">Toca en <b>"Herramientas"</b> para abrir un PDF</div>
+    </div>
+
+    <div id="sheet-wrapper">
+      <canvas id="pdf-canvas"></canvas>
+      <div id="grid-overlay" class="grid-overlay"></div>
+      <div class="fabric-wrapper">
+        <canvas id="fabric-canvas"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <div id="precision-tools" class="precision-tools">
+    <button id="btn-toggle-grid" class="grid-toggle-btn" title="Mostrar/Ocultar Grilla">
+      <span class="grid-icon">⊞</span>
+      <span class="grid-text">Grilla</span>
+    </button>
+
+    <div class="dpad-cross">
+      <button class="dpad-btn up" id="dpad-up" title="Mover 1px arriba">▲</button>
+      <button class="dpad-btn left" id="dpad-left" title="Mover 1px izquierda">◀</button>
+      <div class="dpad-center" title="Centro">1px</div>
+      <button class="dpad-btn right" id="dpad-right" title="Mover 1px derecha">▶</button>
+      <button class="dpad-btn down" id="dpad-down" title="Mover 1px abajo">▼</button>
+    </div>
+  </div>
+
+  <div id="inline-editor-card" class="inline-editor-card">
+    <div class="editor-header">
+      <span id="editor-title">✏️ Modificar Texto</span>
+      <button id="close-inline-editor" class="btn-icon">✕</button>
+    </div>
+
+    <div class="font-toolbar">
+      <select id="font-family-select" class="font-select">
+        <optgroup label="Sans-Serif / Modernas">
+          <option value="Arial" style="font-family: Arial;">Arial / Helvetica</option>
+          <option value="Roboto" style="font-family: 'Roboto';">Roboto</option>
+          <option value="Open Sans" style="font-family: 'Open Sans';">Open Sans</option>
+          <option value="Montserrat" style="font-family: 'Montserrat';">Montserrat</option>
+          <option value="Poppins" style="font-family: 'Poppins';">Poppins</option>
+          <option value="Inter" style="font-family: 'Inter';">Inter</option>
+          <option value="Lato" style="font-family: 'Lato';">Lato</option>
+          <option value="Raleway" style="font-family: 'Raleway';">Raleway</option>
+          <option value="Nunito" style="font-family: 'Nunito';">Nunito</option>
+          <option value="Verdana" style="font-family: Verdana;">Verdana</option>
+          <option value="Trebuchet MS" style="font-family: 'Trebuchet MS';">Trebuchet MS</option>
+        </optgroup>
+        <optgroup label="Serif / Clásicas / Elegantes">
+          <option value="Times New Roman" style="font-family: 'Times New Roman';">Times New Roman</option>
+          <option value="Georgia" style="font-family: Georgia;">Georgia</option>
+          <option value="EB Garamond" style="font-family: 'EB Garamond';">Garamond</option>
+          <option value="Playfair Display" style="font-family: 'Playfair Display';">Playfair Display</option>
+          <option value="Merriweather" style="font-family: 'Merriweather';">Merriweather</option>
+        </optgroup>
+        <optgroup label="Monoespaciadas / Código">
+          <option value="Courier New" style="font-family: 'Courier New';">Courier New</option>
+          <option value="Consolas" style="font-family: Consolas;">Consolas</option>
+        </optgroup>
+        <optgroup label="Manuscritas / Llamativas">
+          <option value="Pacifico" style="font-family: 'Pacifico';">Pacifico</option>
+          <option value="Dancing Script" style="font-family: 'Dancing Script';">Dancing Script</option>
+          <option value="Caveat" style="font-family: 'Caveat';">Caveat</option>
+          <option value="Impact" style="font-family: Impact;">Impact</option>
+          <option value="Comic Sans MS" style="font-family: 'Comic Sans MS';">Comic Sans MS</option>
+        </optgroup>
+      </select>
+
+      <div class="font-styles">
+        <button id="btn-toggle-bold" class="style-toggle" type="button" title="Negrita"><b>B</b></button>
+        <button id="btn-toggle-italic" class="style-toggle" type="button" title="Cursiva"><i>I</i></button>
+        <button id="btn-toggle-underline" class="style-toggle" type="button" title="Subrayado"><u>U</u></button>
+      </div>
+
+      <div class="font-size-ctrl">
+        <button id="btn-size-dec" class="size-btn" type="button">-</button>
+        <input type="number" id="font-size-input" class="size-input" min="6" max="90" value="14">
+        <button id="btn-size-inc" class="size-btn" type="button">+</button>
+      </div>
+
+      <input type="color" id="font-color-picker" class="color-picker" value="#000000" title="Color de texto">
+    </div>
+
+    <textarea id="inline-editor-input" rows="3" placeholder="Escribe el texto aquí..."></textarea>
+
+    <div class="editor-actions">
+      <button id="btn-center-text" class="btn-action secondary" title="Centrar texto en la página">🎯 Centrar</button>
+      <button id="btn-apply-text" class="btn-action primary">Aplicar cambios</button>
+    </div>
+  </div>
+
+  <button class="fab-main-trigger" id="open-tools-btn">
+    <span>🛠️</span>
+    <span>Herramientas</span>
+  </button>
+
+  <div class="sheet-backdrop" id="sheet-backdrop">
+    <div class="tools-panel">
+      <div class="panel-header">
+        <span class="panel-title">Herramientas de Edición</span>
+        <button class="panel-close" id="close-tools-btn">✕</button>
+      </div>
+
+      <div class="tools-grid">
+        <button class="tool-btn highlight disabled-tool" id="btn-mode-edit-text">
+          <span class="icon">📝</span>
+          <span>Editar Texto PDF</span>
+        </button>
+
+        <button class="tool-btn disabled-tool" id="btn-add-text">
+          <span class="icon">🔤</span>
+          <span>Añadir Texto</span>
+        </button>
+
+        <button class="tool-btn disabled-tool" id="btn-whiteout">
+          <span class="icon">⬜</span>
+          <span>Tapar / Parche</span>
+        </button>
+
+        <button class="tool-btn disabled-tool" id="btn-draw">
+          <span class="icon">✏️</span>
+          <span>Firmar / Lápiz</span>
+        </button>
+
+        <label class="tool-btn disabled-tool" for="img-input" style="cursor:pointer;">
+          <span class="icon">🖼️</span>
+          <span>Subir Firma/Foto</span>
+        </label>
+        <input type="file" id="img-input" accept="image/png, image/jpeg" style="display:none;">
+
+        <button class="tool-btn danger disabled-tool" id="btn-delete-object">
+          <span class="icon">🗑️</span>
+          <span>Eliminar Capa</span>
+        </button>
+
+        <label class="tool-btn" for="pdf-input" style="cursor:pointer;">
+          <span class="icon">📁</span>
+          <span>Abrir PDF</span>
+        </label>
+        <input type="file" id="pdf-input" accept="application/pdf" style="display:none;">
+
+        <button class="tool-btn disabled-tool" id="btn-reset-zoom">
+          <span class="icon">🎯</span>
+          <span>Centrar Vista</span>
+        </button>
+
+        <button class="tool-btn success disabled-tool" id="btn-save">
+          <span class="icon">💾</span>
+          <span>Descargar PDF</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js?v=8"></script>
+</body>
+</html>
 
