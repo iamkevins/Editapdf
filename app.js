@@ -17,6 +17,9 @@ let multiSelectedItems = [];
 let currentParagraphAlign = 'justify';
 let isResizeModeActive = false;
 
+// Expresión regular para detectar viñetas, guiones, numeración o incisos
+const LIST_ITEM_REGEX = /^([•\-\*–—]\s+|\d+[\.\)]\s+|[a-zA-Z][\.\)]\s+)/;
+
 // =========================================================
 // CARGADOR SEGURO DE PDF-LIB
 // =========================================================
@@ -130,7 +133,7 @@ function parseHtmlToRuns(node, style = { bold: false, italic: false, underline: 
 
       if (tag === 'br') {
         runs.push({ text: '\n', bold: false, italic: false, underline: false });
-      } else if (tag === 'div' || tag === 'p') {
+      } else if (tag === 'div' || tag === 'p' || tag === 'li') {
         if (runs.length > 0 && !runs[runs.length - 1].text.endsWith('\n')) {
           runs.push({ text: '\n', bold: false, italic: false, underline: false });
         }
@@ -175,13 +178,115 @@ function runsToHtml(runs, fallbackText, fallbackBold, fallbackItalic, fallbackUn
       if (r.italic) s = `<i>${s}</i>`;
       if (r.underline) s = `<u>${s}</u>`;
       return s;
-    }).join('');
+    }).join('').replace(/\n/g, '<br>');
   }
   let s = escapeHtml(fallbackText || '');
   if (fallbackBold) s = `<b>${s}</b>`;
   if (fallbackItalic) s = `<i>${s}</i>`;
   if (fallbackUnderline) s = `<u>${s}</u>`;
-  return s;
+  return s.replace(/\n/g, '<br>');
+}
+
+function splitRunsIntoLines(runs) {
+  const lines = [[]];
+  runs.forEach(run => {
+    const parts = run.text.split('\n');
+    parts.forEach((part, pIdx) => {
+      if (pIdx > 0) {
+        lines.push([]);
+      }
+      if (part.length > 0) {
+        lines[lines.length - 1].push({
+          text: part,
+          bold: run.bold,
+          italic: run.italic,
+          underline: run.underline
+        });
+      }
+    });
+  });
+  return lines;
+}
+
+function stripPrefixFromLineRuns(lineRuns, regex) {
+  if (!lineRuns.length) return [];
+  const cloned = lineRuns.map(r => ({ ...r }));
+  const firstText = cloned[0].text;
+  const match = firstText.match(regex);
+  if (match) {
+    cloned[0].text = firstText.slice(match[0].length);
+    if (cloned[0].text.length === 0) {
+      cloned.shift();
+    }
+  }
+  return cloned;
+}
+
+function toggleListFormat(type) {
+  const rawRuns = parseHtmlToRuns(inlineEditorInput);
+  const runs = simplifyRuns(rawRuns);
+  const lines = splitRunsIntoLines(runs);
+
+  const bulletRegex = /^•\s+/;
+  let allAlreadyBullet = true;
+  let allAlreadyNumber = true;
+  let nonBlankCount = 0;
+
+  lines.forEach(lineRuns => {
+    const lineText = lineRuns.map(r => r.text).join('').trim();
+    if (lineText.length > 0) {
+      nonBlankCount++;
+      if (!bulletRegex.test(lineText)) allAlreadyBullet = false;
+      if (!new RegExp(`^${nonBlankCount}[\\.\\)]\\s+`).test(lineText)) allAlreadyNumber = false;
+    }
+  });
+
+  if (nonBlankCount === 0) return;
+
+  let numberCounter = 1;
+  const newLines = lines.map(lineRuns => {
+    const fullLineText = lineRuns.map(r => r.text).join('');
+    if (!fullLineText.trim().length) return lineRuns;
+
+    let stripped = stripPrefixFromLineRuns(lineRuns, LIST_ITEM_REGEX);
+
+    if (type === 'bullet') {
+      if (!allAlreadyBullet) {
+        stripped.unshift({ text: '• ', bold: false, italic: false, underline: false });
+      }
+    } else if (type === 'number') {
+      if (!allAlreadyNumber) {
+        stripped.unshift({ text: `${numberCounter}. `, bold: false, italic: false, underline: false });
+        numberCounter++;
+      }
+    }
+    return stripped;
+  });
+
+  let resultRuns = [];
+  newLines.forEach((lRuns, idx) => {
+    if (idx > 0) resultRuns.push({ text: '\n', bold: false, italic: false, underline: false });
+    resultRuns = resultRuns.concat(lRuns);
+  });
+  resultRuns = simplifyRuns(resultRuns);
+
+  inlineEditorInput.innerHTML = runsToHtml(resultRuns);
+  updateListToolbarStates(resultRuns);
+}
+
+function updateListToolbarStates(runs) {
+  const lines = splitRunsIntoLines(runs || parseHtmlToRuns(inlineEditorInput));
+  let hasBullets = false;
+  let hasNumbers = false;
+
+  lines.forEach(lineRuns => {
+    const text = lineRuns.map(r => r.text).join('').trim();
+    if (/^•\s+/.test(text)) hasBullets = true;
+    if (/^\d+[\.\)]\s+/.test(text)) hasNumbers = true;
+  });
+
+  btnListBullet.classList.toggle('active', hasBullets);
+  btnListNumber.classList.toggle('active', hasNumbers);
 }
 
 function createFabricStylesFromRuns(runs) {
@@ -553,7 +658,7 @@ function updatePatchInList(item, isDeleted = false) {
 }
 
 // =========================================================
-// ELEMENTOS DOM, FORMATO Y ALINEACIÓN DE PÁRRAFO
+// ELEMENTOS DOM, FORMATO, LISTAS Y ALINEACIÓN
 // =========================================================
 const viewport = document.getElementById('viewport');
 const sheetWrapper = document.getElementById('sheet-wrapper');
@@ -574,6 +679,10 @@ const fontFamilySelect = document.getElementById('font-family-select');
 const btnToggleBold = document.getElementById('btn-toggle-bold');
 const btnToggleItalic = document.getElementById('btn-toggle-italic');
 const btnToggleUnderline = document.getElementById('btn-toggle-underline');
+
+// Botones de Listas
+const btnListBullet = document.getElementById('btn-list-bullet');
+const btnListNumber = document.getElementById('btn-list-number');
 
 // Botones de alineación
 const btnAlignLeft = document.getElementById('btn-align-left');
@@ -624,16 +733,29 @@ btnAlignCenter.addEventListener('click', () => setParagraphAlign('center'));
 btnAlignRight.addEventListener('click', () => setParagraphAlign('right'));
 btnAlignJustify.addEventListener('click', () => setParagraphAlign('justify'));
 
+btnListBullet.addEventListener('click', (e) => {
+  e.preventDefault();
+  toggleListFormat('bullet');
+});
+
+btnListNumber.addEventListener('click', (e) => {
+  e.preventDefault();
+  toggleListFormat('number');
+});
+
 function updateEditorToolbarStates() {
   btnToggleBold.classList.toggle('active', document.queryCommandState('bold'));
   btnToggleItalic.classList.toggle('active', document.queryCommandState('italic'));
   btnToggleUnderline.classList.toggle('active', document.queryCommandState('underline'));
+  updateListToolbarStates();
 }
 
 ['pointerdown', 'mousedown'].forEach(evt => {
   btnToggleBold.addEventListener(evt, e => e.preventDefault());
   btnToggleItalic.addEventListener(evt, e => e.preventDefault());
   btnToggleUnderline.addEventListener(evt, e => e.preventDefault());
+  btnListBullet.addEventListener(evt, e => e.preventDefault());
+  btnListNumber.addEventListener(evt, e => e.preventDefault());
 });
 
 btnToggleBold.addEventListener('click', e => {
@@ -1004,10 +1126,15 @@ btnMergeJustify.addEventListener('click', () => {
 
   let combinedRuns = [];
   itemsWithMetrics.forEach((item, idx) => {
+    const isListItem = LIST_ITEM_REGEX.test(item.text.trim());
+
     if (idx > 0 && combinedRuns.length > 0) {
       const lastRun = combinedRuns[combinedRuns.length - 1];
       if (lastRun.text.endsWith('-')) {
         lastRun.text = lastRun.text.slice(0, -1);
+      } else if (isListItem) {
+        // Si detecta viñeta o numeración, separa con salto de línea
+        combinedRuns.push({ text: '\n', bold: false, italic: false, underline: false });
       } else {
         combinedRuns.push({ text: ' ', bold: false, italic: false, underline: false });
       }
@@ -1198,7 +1325,6 @@ pdfInput.addEventListener('change', async (e) => {
   fabricCanvas.on('selection:updated', onSelectionChanged);
   fabricCanvas.on('selection:cleared', clearSelectionUI);
 
-  // Redimensión suave y fluida del párrafo sin alterar tamaño de letra
   fabricCanvas.on('object:scaling', (e) => {
     const obj = e.target;
     if (!obj || (!obj.isUnifiedParagraph && obj.type !== 'textbox')) return;
@@ -1569,6 +1695,8 @@ btnAddText.addEventListener('click', () => {
   btnToggleBold.classList.remove('active');
   btnToggleItalic.classList.remove('active');
   btnToggleUnderline.classList.remove('active');
+  btnListBullet.classList.remove('active');
+  btnListNumber.classList.remove('active');
   fontSizeInput.value = '16';
   fontColorPicker.value = '#000000';
   setParagraphAlign('left');
@@ -1839,7 +1967,7 @@ btnResetZoom.addEventListener('click', () => {
 });
 
 // =========================================================
-// DESCARGA DEL PDF (ALINEACIÓN IZQ / CENTRO / DER / JUSTIFICADO)
+// DESCARGA DEL PDF (RESPETO DE SALTOS DE LÍNEA Y LISTAS)
 // =========================================================
 function base64ToUint8Array(dataUrl) {
   const base64 = dataUrl.split(',')[1];
@@ -1855,12 +1983,13 @@ function base64ToUint8Array(dataUrl) {
 function getStyledWordsFromRuns(runs) {
   const words = [];
   (runs || []).forEach(run => {
-    const parts = run.text.split(/(\s+)/);
+    const parts = run.text.split(/(\n|[^\S\n]+)/);
     parts.forEach(part => {
       if (!part) return;
       words.push({
         text: part,
-        isSpace: /^\s+$/.test(part),
+        isNewline: part === '\n',
+        isSpace: /^[^\S\n]+$/.test(part),
         bold: !!run.bold,
         italic: !!run.italic,
         underline: !!run.underline
@@ -1876,10 +2005,22 @@ function wrapStyledWordsForPdf(styledWords, defaultFontFamily, fontSize, maxWidt
   let currentLineWidth = 0;
 
   for (const item of styledWords) {
+    if (item.isNewline) {
+      while (currentLine.length > 0 && currentLine[currentLine.length - 1].isSpace) {
+        currentLine.pop();
+      }
+      currentLine.isHardBreak = true;
+      lines.push(currentLine);
+      currentLine = [];
+      currentLineWidth = 0;
+      continue;
+    }
+
     if (item.isSpace) {
       if (currentLine.length > 0) currentLine.push(item);
       continue;
     }
+
     const font = mapFontFn(defaultFontFamily, item.bold, item.italic);
     const w = font.widthOfTextAtSize(item.text, fontSize);
 
@@ -1895,6 +2036,7 @@ function wrapStyledWordsForPdf(styledWords, defaultFontFamily, fontSize, maxWidt
       currentLineWidth += w;
     }
   }
+
   if (currentLine.length > 0) {
     while (currentLine.length > 0 && currentLine[currentLine.length - 1].isSpace) {
       currentLine.pop();
@@ -1958,11 +2100,10 @@ btnSave.addEventListener('click', async () => {
       return res ? PDFLibEngine.rgb(parseInt(res[1], 16) / 255, parseInt(res[2], 16) / 255, parseInt(res[3], 16) / 255) : PDFLibEngine.rgb(0, 0, 0);
     }
 
-    // 1. Modificaciones de texto y párrafos (con soporte de alineación)
+    // 1. Modificaciones de texto y párrafos (con soporte de alineación y listas)
     for (const patch of modifiedTextPatches) {
       if (patch.isDeleted) continue;
 
-      // Párrafos completos unificados
       if (patch.isUnifiedParagraph) {
         if (patch.originalLines && patch.originalLines.length > 0) {
           patch.originalLines.forEach(item => {
@@ -1991,8 +2132,8 @@ btnSave.addEventListener('click', async () => {
 
         for (let lIdx = 0; lIdx < wrappedLines.length; lIdx++) {
           const lineWords = wrappedLines[lIdx];
-          const isLastLine = (lIdx === wrappedLines.length - 1);
-          const nonSpaces = lineWords.filter(it => !it.isSpace);
+          const isLastLine = (lIdx === wrappedLines.length - 1) || lineWords.isHardBreak;
+          const nonSpaces = lineWords.filter(it => !it.isSpace && !it.isNewline);
 
           const totalWordsWidth = nonSpaces.reduce((acc, it) => {
             const f = mapFont(patch.fontFamily, it.bold, it.italic);
