@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Editor PDF Pro - Formato, Alineación y Redimensión de Párrafo</title>
+  <title>Editor PDF Pro - Formato, Alineación y Listas</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="./style.css?v=12">
+  <link rel="stylesheet" href="./style.css?v=13">
 </head>
 <body>
 
@@ -134,6 +134,11 @@
         <button id="btn-toggle-underline" class="style-toggle" type="button" title="Subrayado"><u>U</u></button>
       </div>
 
+      <div class="list-styles" id="list-format-container">
+        <button id="btn-list-bullet" class="style-toggle" type="button" title="Lista con viñetas (•)">•≡</button>
+        <button id="btn-list-number" class="style-toggle" type="button" title="Lista numerada (1.)">1.≡</button>
+      </div>
+
       <div class="align-styles" id="paragraph-align-container">
         <button id="btn-align-left" class="style-toggle" type="button" title="Alinear a la izquierda">⇠</button>
         <button id="btn-align-center" class="style-toggle" type="button" title="Centrado">≡</button>
@@ -221,6 +226,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=12"></script>
+  <script src="./app.js?v=13"></script>
 </body>
 </html>
