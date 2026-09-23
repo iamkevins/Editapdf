@@ -377,7 +377,7 @@ html, body {
   left: 50%;
   transform: translateX(-50%) translateY(30px);
   width: calc(100% - 24px);
-  max-width: 500px;
+  max-width: 520px;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 16px;
@@ -408,14 +408,14 @@ html, body {
 .font-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
 .font-select {
   flex: 1;
-  min-width: 140px;
+  min-width: 130px;
   background: #0f172a;
   color: #f8fafc;
   border: 1px solid #475569;
@@ -437,9 +437,9 @@ html, body {
   padding: 4px;
 }
 
-.font-styles, .align-styles {
+.font-styles, .list-styles, .align-styles {
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
 .style-toggle {
