@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Editor PDF Pro - Formato por Palabra</title>
+  <title>Editor PDF Pro - Formato y Alineación de Párrafo</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="./style.css?v=10">
+  <link rel="stylesheet" href="./style.css?v=11">
 </head>
 <body>
 
@@ -42,9 +42,9 @@
         <span id="multiselect-count" class="multi-count">1</span>
       </button>
 
-      <button id="btn-merge-justify" class="nav-btn btn-merge-justify" style="display: none;" title="Unir líneas y justificar como párrafo">
+      <button id="btn-merge-justify" class="nav-btn btn-merge-justify" style="display: none;" title="Unir líneas y crear párrafo">
         <span class="icon">📑</span>
-        <span id="btn-merge-text">Justificar</span>
+        <span id="btn-merge-text">Crear Párrafo</span>
       </button>
     </div>
     
@@ -127,9 +127,16 @@
       </select>
 
       <div class="font-styles">
-        <button id="btn-toggle-bold" class="style-toggle" type="button" title="Negrita en palabra seleccionada"><b>B</b></button>
-        <button id="btn-toggle-italic" class="style-toggle" type="button" title="Cursiva en palabra seleccionada"><i>I</i></button>
-        <button id="btn-toggle-underline" class="style-toggle" type="button" title="Subrayado en palabra seleccionada"><u>U</u></button>
+        <button id="btn-toggle-bold" class="style-toggle" type="button" title="Negrita"><b>B</b></button>
+        <button id="btn-toggle-italic" class="style-toggle" type="button" title="Cursiva"><i>I</i></button>
+        <button id="btn-toggle-underline" class="style-toggle" type="button" title="Subrayado"><u>U</u></button>
+      </div>
+
+      <div class="align-styles" id="paragraph-align-container">
+        <button id="btn-align-left" class="style-toggle" type="button" title="Alinear a la izquierda">⇠</button>
+        <button id="btn-align-center" class="style-toggle" type="button" title="Centrado">≡</button>
+        <button id="btn-align-right" class="style-toggle" type="button" title="Alinear a la derecha">⇢</button>
+        <button id="btn-align-justify" class="style-toggle" type="button" title="Justificar párrafo">⇸⇷</button>
       </div>
 
       <div class="font-size-ctrl">
@@ -144,7 +151,7 @@
     <div id="inline-editor-input" class="inline-editor-input" contenteditable="true" placeholder="Escribe el texto aquí... (Selecciona cualquier palabra para aplicar Negrita)"></div>
 
     <div class="editor-actions">
-      <button id="btn-center-text" class="btn-action secondary" title="Centrar texto en la página">🎯 Centrar</button>
+      <button id="btn-center-text" class="btn-action secondary" title="Centrar texto en la página">🎯 Centrar Página</button>
       <button id="btn-apply-text" class="btn-action primary">Aplicar cambios</button>
     </div>
   </div>
@@ -212,6 +219,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=10"></script>
+  <script src="./app.js?v=11"></script>
 </body>
 </html>
