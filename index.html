@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Editor PDF Pro - Formato, Listas y Sublistas Estructuradas</title>
+  <title>Editor PDF Pro - Formato, Sublistas y Sangría Francesa</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,7 +44,7 @@
         <span id="multiselect-count" class="multi-count">1</span>
       </button>
 
-      <button id="btn-merge-justify" class="nav-btn btn-merge-justify" style="display: none;" title="Unir líneas y crear párrafo">
+      <button id="btn-merge-justify" class="nav-btn btn-merge-justify" style="display: none;" title="Unir líneas y estructurar lista/párrafo">
         <span class="icon">📑</span>
         <span id="btn-merge-text">Crear Párrafo</span>
       </button>
@@ -135,17 +135,17 @@
       </div>
 
       <div class="list-styles" id="list-format-container">
-        <button id="btn-list-bullet" class="style-toggle" type="button" title="Lista con viñetas (•)">•≡</button>
-        <button id="btn-list-number" class="style-toggle" type="button" title="Lista numerada (1.)">1.≡</button>
-        <button id="btn-list-indent" class="style-toggle" type="button" title="Crear sublista / Sangrar hacia adentro">⇥</button>
-        <button id="btn-list-outdent" class="style-toggle" type="button" title="Regresar nivel / Reducir sangría">⇤</button>
+        <button id="btn-list-bullet" class="style-toggle" type="button" title="Viñeta (•)">•≡</button>
+        <button id="btn-list-number" class="style-toggle" type="button" title="Numeración (1.)">1.≡</button>
+        <button id="btn-indent-inc" class="style-toggle" type="button" title="Sublista / Sangría derecha (⇥)">⇥</button>
+        <button id="btn-indent-dec" class="style-toggle" type="button" title="Reducir Sangría (⇤)">⇤</button>
       </div>
 
       <div class="align-styles" id="paragraph-align-container">
         <button id="btn-align-left" class="style-toggle" type="button" title="Alinear a la izquierda">⇠</button>
         <button id="btn-align-center" class="style-toggle" type="button" title="Centrado">≡</button>
         <button id="btn-align-right" class="style-toggle" type="button" title="Alinear a la derecha">⇢</button>
-        <button id="btn-align-justify" class="style-toggle" type="button" title="Justificar párrafo">⇸⇷</button>
+        <button id="btn-align-justify" class="style-toggle" type="button" title="Justificar">⇸⇷</button>
       </div>
 
       <div class="font-size-ctrl">
@@ -157,7 +157,7 @@
       <input type="color" id="font-color-picker" class="color-picker" value="#000000" title="Color de texto">
     </div>
 
-    <div id="inline-editor-input" class="inline-editor-input" contenteditable="true" placeholder="Escribe el texto aquí... (Selecciona cualquier palabra para aplicar formato)"></div>
+    <div id="inline-editor-input" class="inline-editor-input" contenteditable="true" placeholder="Escribe el texto aquí..."></div>
 
     <div class="editor-actions">
       <button id="btn-center-text" class="btn-action secondary" title="Centrar texto en la página">🎯 Centrar Página</button>
