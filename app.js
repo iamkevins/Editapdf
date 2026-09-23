@@ -48,81 +48,67 @@ async function getSafePDFLib() {
 }
 
 // =========================================================
-// INTERPOLADO INTELIGENTE: ELIMINA LETRAS Y DEJA EL FONDO INTACTO
+// DETECCIÓN INTELIGENTE DE COLOR DE FONDO (SIN MANCHAS NI RASTROS)
 // =========================================================
-function inpaintBackgroundPreserve(ctx, bx, by, bw, bh) {
+function getAccurateBackgroundColor(ctx, boxX, boxY, boxW, boxH) {
   const cW = ctx.canvas.width;
   const cH = ctx.canvas.height;
+  const samples = [];
 
-  const x0 = Math.max(0, bx);
-  const y0 = Math.max(0, by);
-  const x1 = Math.min(cW - 1, bx + bw);
-  const y1 = Math.min(cH - 1, by + bh);
-  const w = x1 - x0;
-  const h = y1 - y0;
+  // Muestrear a 4px de distancia del borde para no tocar las letras de la línea
+  const topY = Math.max(0, boxY - 4);
+  const botY = Math.min(cH - 1, boxY + boxH + 4);
+  const stepX = Math.max(2, Math.floor(boxW / 24));
 
-  if (w <= 0 || h <= 0) return;
-
-  const imgData = ctx.getImageData(x0, y0, w, h);
-  const data = imgData.data;
-
-  const leftColors = [];
-  const rightColors = [];
-  for (let y = 0; y < h; y++) {
-    const pL = ctx.getImageData(Math.max(0, x0 - 2), y0 + y, 1, 1).data;
-    const pR = ctx.getImageData(Math.min(cW - 1, x1 + 2), y0 + y, 1, 1).data;
-    leftColors.push(pL);
-    rightColors.push(pR);
-  }
-
-  const topColors = [];
-  const bottomColors = [];
-  for (let x = 0; x < w; x++) {
-    const pT = ctx.getImageData(x0 + x, Math.max(0, y0 - 2), 1, 1).data;
-    const pB = ctx.getImageData(x0 + x, Math.min(cH - 1, y1 + 2), 1, 1).data;
-    topColors.push(pT);
-    bottomColors.push(pB);
-  }
-
-  for (let y = 0; y < h; y++) {
-    const vFactor = h > 1 ? y / (h - 1) : 0.5;
-    const lC = leftColors[y];
-    const rC = rightColors[y];
-
-    for (let x = 0; x < w; x++) {
-      const hFactor = w > 1 ? x / (w - 1) : 0.5;
-      const tC = topColors[x];
-      const bC = bottomColors[x];
-
-      const rH = lC[0] * (1 - hFactor) + rC[0] * hFactor;
-      const gH = lC[1] * (1 - hFactor) + rC[1] * hFactor;
-      const bH = lC[2] * (1 - hFactor) + rC[2] * hFactor;
-
-      const rV = tC[0] * (1 - vFactor) + bC[0] * vFactor;
-      const gV = tC[1] * (1 - vFactor) + bC[1] * vFactor;
-      const bV = tC[2] * (1 - vFactor) + bC[2] * vFactor;
-
-      const idx = (y * w + x) * 4;
-      data[idx] = Math.round((rH + rV) / 2);
-      data[idx + 1] = Math.round((gH + gV) / 2);
-      data[idx + 2] = Math.round((bH + bV) / 2);
-      data[idx + 3] = 255;
+  for (let x = boxX; x <= boxX + boxW; x += stepX) {
+    if (x >= 0 && x < cW) {
+      samples.push(ctx.getImageData(x, topY, 1, 1).data);
+      samples.push(ctx.getImageData(x, botY, 1, 1).data);
     }
   }
 
-  ctx.putImageData(imgData, x0, y0);
+  const leftX = Math.max(0, boxX - 4);
+  const rightX = Math.min(cW - 1, boxX + boxW + 4);
+  const stepY = Math.max(2, Math.floor(boxH / 12));
+
+  for (let y = boxY; y <= boxY + boxH; y += stepY) {
+    if (y >= 0 && y < cH) {
+      samples.push(ctx.getImageData(leftX, y, 1, 1).data);
+      samples.push(ctx.getImageData(rightX, y, 1, 1).data);
+    }
+  }
+
+  if (samples.length === 0) return { r: 255, g: 255, b: 255, css: '#ffffff' };
+
+  // Calcular brillo de cada muestra
+  const parsed = samples.map(p => ({
+    r: p[0], g: p[1], b: p[2],
+    luma: 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]
+  }));
+
+  // Ordenar de más claro a más oscuro
+  parsed.sort((a, b) => b.luma - a.luma);
+
+  // Descartar píxeles oscuros (letras adyacentes o líneas cercanas)
+  const maxLuma = parsed[0].luma;
+  const cleanBgCandidates = parsed.filter(p => p.luma >= Math.max(120, maxLuma - 35));
+  const pool = cleanBgCandidates.length > 0 ? cleanBgCandidates : parsed;
+
+  // Tomar la mediana del fondo real
+  const mid = Math.floor(pool.length / 2);
+  const r = pool[mid].r;
+  const g = pool[mid].g;
+  const b = pool[mid].b;
+
+  return { r, g, b, css: `rgb(${r}, ${g}, ${b})` };
 }
 
-function getCanvasCropPngBytes(sourceCanvas, sx, sy, sw, sh) {
-  const tempCanvas = document.createElement('canvas');
-  const cropW = Math.max(1, Math.ceil(sw));
-  const cropH = Math.max(1, Math.ceil(sh));
-  tempCanvas.width = cropW;
-  tempCanvas.height = cropH;
-  const tempCtx = tempCanvas.getContext('2d');
-  tempCtx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, cropW, cropH);
-  const dataUrl = tempCanvas.toDataURL('image/png');
-  return base64ToUint8Array(dataUrl);
+// Limpia el área eliminando las letras al 100% con su fondo exacto
+function cleanEraseArea(ctx, boxX, boxY, boxW, boxH) {
+  const bg = getAccurateBackgroundColor(ctx, boxX, boxY, boxW, boxH);
+  ctx.fillStyle = bg.css;
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  return bg;
 }
 
 // =========================================================
@@ -366,7 +352,8 @@ function redo() {
     const { lineData, boxObject, newSnapshot, firstEraseData } = action;
 
     const ctx = pdfCanvas.getContext('2d');
-    inpaintBackgroundPreserve(ctx, firstEraseData.box.x, firstEraseData.box.y, firstEraseData.box.w, firstEraseData.box.h);
+    ctx.fillStyle = firstEraseData.bgColor.css;
+    ctx.fillRect(firstEraseData.box.x, firstEraseData.box.y, firstEraseData.box.w, firstEraseData.box.h);
 
     if (boxObject) {
       boxObject.wasConverted = true;
@@ -405,7 +392,8 @@ function redo() {
   } else if (action.type === 'PARAGRAPH_MERGE') {
     const ctx = pdfCanvas.getContext('2d');
     action.eraseSnapshots.forEach(snap => {
-      inpaintBackgroundPreserve(ctx, snap.boxX, snap.boxY, snap.boxW, snap.boxH);
+      ctx.fillStyle = snap.bgColor.css;
+      ctx.fillRect(snap.boxX, snap.boxY, snap.boxW, snap.boxH);
     });
 
     action.itemsWithMetrics.forEach(item => {
@@ -466,8 +454,8 @@ btnQuickDelete.addEventListener('click', () => {
 function deleteOriginalLineBox(boxObj) {
   const lineData = boxObj.lineData;
   const ctx = pdfCanvas.getContext('2d');
-  const padTop = lineData.h * 0.28;
-  const padBottom = lineData.h * 0.38;
+  const padTop = Math.ceil(lineData.h * 0.32);
+  const padBottom = Math.ceil(lineData.h * 0.38);
   const padX = 4;
 
   const boxX = Math.max(0, Math.floor(lineData.x - padX));
@@ -476,11 +464,17 @@ function deleteOriginalLineBox(boxObj) {
   const boxH = Math.ceil(lineData.h + padTop + padBottom);
 
   const originalImageData = ctx.getImageData(boxX, boxY, boxW, boxH);
-  inpaintBackgroundPreserve(ctx, boxX, boxY, boxW, boxH);
+  const bgColor = cleanEraseArea(ctx, boxX, boxY, boxW, boxH);
 
   boxObj.wasConverted = true;
   fabricCanvas.remove(boxObj);
   fabricCanvas.renderAll();
+
+  lineData.firstEraseData = {
+    imageData: originalImageData,
+    bgColor,
+    box: { x: boxX, y: boxY, w: boxW, h: boxH }
+  };
 
   updatePatchInList(lineData, true);
 
@@ -490,14 +484,11 @@ function deleteOriginalLineBox(boxObj) {
     boxObject: boxObj,
     prevSnapshot: { isEdited: false, str: lineData.fullStr, runs: null },
     newSnapshot: { isEdited: true, str: '', runs: null },
-    firstEraseData: {
-      imageData: originalImageData,
-      box: { x: boxX, y: boxY, w: boxW, h: boxH }
-    }
+    firstEraseData: lineData.firstEraseData
   });
 
   clearSelectionUI();
-  statusBadge.textContent = 'Frase eliminada con fondo intacto';
+  statusBadge.textContent = 'Frase eliminada con fondo limpio';
 }
 
 function updatePatchInList(item, isDeleted = false) {
@@ -531,6 +522,7 @@ function updatePatchInList(item, isDeleted = false) {
     modifiedTextPatches.push({
       lineId: item.id,
       originalLine: item,
+      firstEraseData: item.firstEraseData,
       newText: isDeleted ? '' : item.currentStr,
       runs: item.runs || null,
       fontFamily: item.currentFamily,
@@ -602,7 +594,6 @@ const btnSave = document.getElementById('btn-save');
 let isEditModeActive = false;
 let currentTargetObject = null;
 
-// Aplicar formato individual a la palabra o selección activa sin perder foco
 function applyCommandToSelection(cmd) {
   document.execCommand(cmd, false, null);
   updateEditorToolbarStates();
@@ -614,7 +605,6 @@ function updateEditorToolbarStates() {
   btnToggleUnderline.classList.toggle('active', document.queryCommandState('underline'));
 }
 
-// pointerdown previene perder el cursor sobre la palabra seleccionada
 ['pointerdown', 'mousedown'].forEach(evt => {
   btnToggleBold.addEventListener(evt, e => e.preventDefault());
   btnToggleItalic.addEventListener(evt, e => e.preventDefault());
@@ -1002,13 +992,12 @@ btnMergeJustify.addEventListener('click', () => {
   combinedRuns = simplifyRuns(combinedRuns);
 
   const combinedText = combinedRuns.map(r => r.text).join('');
-
   const ctx = pdfCanvas.getContext('2d');
   const eraseSnapshots = [];
 
   itemsWithMetrics.forEach(item => {
-    const padTop = item.h * 0.28;
-    const padBottom = item.h * 0.38;
+    const padTop = Math.ceil(item.h * 0.32);
+    const padBottom = Math.ceil(item.h * 0.38);
     const padX = 4;
     const boxX = Math.max(0, Math.floor(item.x - padX));
     const boxY = Math.max(0, Math.floor(item.y - padTop));
@@ -1016,9 +1005,11 @@ btnMergeJustify.addEventListener('click', () => {
     const boxH = Math.ceil(item.h + padTop + padBottom);
 
     const origImg = ctx.getImageData(boxX, boxY, boxW, boxH);
-    inpaintBackgroundPreserve(ctx, boxX, boxY, boxW, boxH);
+    const bgColor = cleanEraseArea(ctx, boxX, boxY, boxW, boxH);
 
-    eraseSnapshots.push({ boxX, boxY, boxW, boxH, origImg });
+    eraseSnapshots.push({ boxX, boxY, boxW, boxH, origImg, bgColor });
+    item.eraseBox = { x: boxX, y: boxY, w: boxW, h: boxH };
+    item.eraseBg = bgColor;
 
     if (item.lineData) {
       item.lineData.isEdited = true;
@@ -1079,7 +1070,7 @@ btnMergeJustify.addEventListener('click', () => {
 
   clearMultiSelectionStyles();
   showPrecisionTools();
-  statusBadge.textContent = '¡Párrafo unificado con fondo intacto!';
+  statusBadge.textContent = '¡Párrafo unificado con fondo limpio!';
 });
 
 // =========================================================
@@ -1542,8 +1533,8 @@ btnApplyText.addEventListener('click', () => {
 
   const ctx = pdfCanvas.getContext('2d');
   if (!lineData.firstEraseData) {
-    const padTop = lineData.h * 0.28;
-    const padBottom = lineData.h * 0.38;
+    const padTop = Math.ceil(lineData.h * 0.32);
+    const padBottom = Math.ceil(lineData.h * 0.38);
     const padX = 4;
 
     const boxX = Math.max(0, Math.floor(lineData.x - padX));
@@ -1552,10 +1543,11 @@ btnApplyText.addEventListener('click', () => {
     const boxH = Math.ceil(lineData.h + padTop + padBottom);
 
     const originalImageData = ctx.getImageData(boxX, boxY, boxW, boxH);
-    inpaintBackgroundPreserve(ctx, boxX, boxY, boxW, boxH);
+    const bgColor = cleanEraseArea(ctx, boxX, boxY, boxW, boxH);
 
     lineData.firstEraseData = {
       imageData: originalImageData,
+      bgColor,
       box: { x: boxX, y: boxY, w: boxW, h: boxH }
     };
   }
@@ -1696,7 +1688,7 @@ btnResetZoom.addEventListener('click', () => {
 });
 
 // =========================================================
-// DESCARGA DEL PDF (EXPORTA CADA PALABRA CON SU FORMATO REAL)
+// DESCARGA DEL PDF (MÁSCARA EXACTA SIN RESIDUOS)
 // =========================================================
 function base64ToUint8Array(dataUrl) {
   const base64 = dataUrl.split(',')[1];
@@ -1815,26 +1807,26 @@ btnSave.addEventListener('click', async () => {
       return res ? PDFLibEngine.rgb(parseInt(res[1], 16) / 255, parseInt(res[2], 16) / 255, parseInt(res[3], 16) / 255) : PDFLibEngine.rgb(0, 0, 0);
     }
 
-    // 1. Modificaciones de texto y párrafos
+    // 1. Modificaciones de texto y párrafos (tapando las letras con máscara exacta)
     for (const patch of modifiedTextPatches) {
       if (patch.isDeleted) continue;
 
       // Párrafos unificados y justificados
       if (patch.isUnifiedParagraph) {
         if (patch.originalLines && patch.originalLines.length > 0) {
-          for (const item of patch.originalLines) {
-            if (item.lineData && item.lineData.firstEraseData) {
-              const b = item.lineData.firstEraseData.box;
-              const patchBytes = getCanvasCropPngBytes(pdfCanvas, b.x, b.y, b.w, b.h);
-              const patchImg = await pdfDoc.embedPng(patchBytes);
-              page.drawImage(patchImg, {
+          patch.originalLines.forEach(item => {
+            const b = item.eraseBox || (item.lineData && item.lineData.firstEraseData ? item.lineData.firstEraseData.box : null);
+            const bg = item.eraseBg || (item.lineData && item.lineData.firstEraseData ? item.lineData.firstEraseData.bgColor : { r: 255, g: 255, b: 255 });
+            if (b) {
+              page.drawRectangle({
                 x: b.x / RENDER_SCALE,
                 y: pH - ((b.y + b.h) / RENDER_SCALE),
                 width: b.w / RENDER_SCALE,
-                height: b.h / RENDER_SCALE
+                height: b.h / RENDER_SCALE,
+                color: PDFLibEngine.rgb(bg.r / 255, bg.g / 255, bg.b / 255)
               });
             }
-          }
+          });
         }
 
         const styledWords = getStyledWordsFromRuns(patch.runs || [{ text: patch.newText, bold: false, italic: false, underline: false }]);
@@ -1888,19 +1880,16 @@ btnSave.addEventListener('click', async () => {
       }
 
       // Líneas individuales modificadas
-      if (patch.originalLine) {
-        const line = patch.originalLine;
-        if (line.firstEraseData) {
-          const b = line.firstEraseData.box;
-          const patchBytes = getCanvasCropPngBytes(pdfCanvas, b.x, b.y, b.w, b.h);
-          const patchImg = await pdfDoc.embedPng(patchBytes);
-          page.drawImage(patchImg, {
-            x: b.x / RENDER_SCALE,
-            y: pH - ((b.y + b.h) / RENDER_SCALE),
-            width: b.w / RENDER_SCALE,
-            height: b.h / RENDER_SCALE
-          });
-        }
+      if (patch.originalLine && patch.originalLine.firstEraseData) {
+        const b = patch.originalLine.firstEraseData.box;
+        const bg = patch.originalLine.firstEraseData.bgColor || { r: 255, g: 255, b: 255 };
+        page.drawRectangle({
+          x: b.x / RENDER_SCALE,
+          y: pH - ((b.y + b.h) / RENDER_SCALE),
+          width: b.w / RENDER_SCALE,
+          height: b.h / RENDER_SCALE,
+          color: PDFLibEngine.rgb(bg.r / 255, bg.g / 255, bg.b / 255)
+        });
       }
 
       if (patch.newText.trim().length > 0) {
