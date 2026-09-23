@@ -96,6 +96,37 @@ html, body {
   color: #ffffff !important;
 }
 
+/* BOTÓN AMARILLO REDONDO PARA MODO REDIMENSIÓN DE PÁRRAFO */
+.btn-yellow-resize {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 50% !important;
+  background: #eab308;
+  border: 2.5px solid #fef08a;
+  box-shadow: 0 0 14px rgba(234, 179, 8, 0.7);
+  padding: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-yellow-resize:hover {
+  background: #facc15;
+  transform: scale(1.08);
+}
+
+.btn-yellow-resize.active-resize {
+  background: #ef4444;
+  border-color: #fca5a5;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.9);
+  animation: pulse-red 1.2s infinite;
+}
+
+@keyframes pulse-red {
+  0% { transform: scale(1); box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+  50% { transform: scale(1.12); box-shadow: 0 0 22px rgba(239, 68, 68, 1); }
+  100% { transform: scale(1); box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+}
+
 /* BOTÓN VERDE DE SELECCIÓN MÚLTIPLE */
 .btn-multiselect {
   width: auto !important;
