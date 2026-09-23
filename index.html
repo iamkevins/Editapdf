@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Editor PDF Pro - Formato y Alineación de Párrafo</title>
+  <title>Editor PDF Pro - Formato, Alineación y Redimensión de Párrafo</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="./style.css?v=11">
+  <link rel="stylesheet" href="./style.css?v=12">
 </head>
 <body>
 
@@ -36,6 +36,8 @@
       <button id="btn-edit-selected" class="nav-btn btn-edit-nav" disabled title="Modificar texto de esta capa">
         <span class="icon">✏️</span>
       </button>
+
+      <button id="btn-toggle-resize" class="nav-btn btn-yellow-resize" style="display: none;" title="Modificar tamaño y forma del párrafo"></button>
 
       <button id="btn-multiselect" class="nav-btn btn-multiselect" style="display: none;" title="Activar selección de más líneas">
         <span class="multi-dot">●</span>
@@ -219,6 +221,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=11"></script>
+  <script src="./app.js?v=12"></script>
 </body>
 </html>
