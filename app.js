@@ -222,7 +222,6 @@ function stripPrefixFromLineRuns(lineRuns, regex) {
   return cloned;
 }
 
-// Alternar viñetas o numeraciones en las líneas seleccionadas del editor
 function toggleListFormat(type) {
   const rawRuns = parseHtmlToRuns(inlineEditorInput);
   const runs = simplifyRuns(rawRuns);
@@ -255,7 +254,6 @@ function toggleListFormat(type) {
   updateListToolbarStates(resultRuns);
 }
 
-// Aumentar o disminuir sangría para sublistas multinivel
 function adjustListIndent(increment = true) {
   const rawRuns = parseHtmlToRuns(inlineEditorInput);
   const runs = simplifyRuns(rawRuns);
@@ -1074,7 +1072,7 @@ function updateMultiSelectUI() {
 
   if (count >= 2) {
     btnMergeJustify.style.display = 'flex';
-    btnMergeText.textContent = `Crear Párrafo (${count})`;
+    btnMergeText.textContent = `Párrafo (${count})`;
   } else {
     btnMergeJustify.style.display = 'none';
   }
@@ -1161,7 +1159,6 @@ btnMergeJustify.addEventListener('click', () => {
 
     let itemRuns = item.runs ? item.runs.map(r => ({ ...r })) : [{ text: item.text, bold: false, italic: false, underline: false }];
 
-    // Si tiene sangría hacia la derecha (sublista), añadir prefijo de espacio
     if (isSublistByIndent && !itemRuns[0].text.startsWith('    ')) {
       itemRuns.unshift({ text: '    ', bold: false, italic: false, underline: false });
     }
@@ -1173,7 +1170,6 @@ btnMergeJustify.addEventListener('click', () => {
       } else if (isListItem || isSublistByIndent) {
         combinedRuns.push({ text: '\n', bold: false, italic: false, underline: false });
       } else {
-        // Párrafo dependiente o renglón siguiente: mantener salto limpio
         combinedRuns.push({ text: '\n', bold: false, italic: false, underline: false });
       }
     }
@@ -2021,12 +2017,13 @@ function base64ToUint8Array(dataUrl) {
 function getStyledWordsFromRuns(runs) {
   const words = [];
   (runs || []).forEach(run => {
-    const parts = run.text.split(/(\s+)/);
+    const parts = run.text.split(/(\n|[^\S\n]+)/);
     parts.forEach(part => {
       if (!part) return;
       words.push({
         text: part,
-        isSpace: /^\s+$/.test(part),
+        isNewline: part === '\n',
+        isSpace: /^[^\S\n]+$/.test(part),
         bold: !!run.bold,
         italic: !!run.italic,
         underline: !!run.underline
@@ -2042,6 +2039,17 @@ function wrapWordsForBlock(styledWords, defaultFontFamily, fontSize, maxWidth, m
   let currentLineWidth = 0;
 
   for (const item of styledWords) {
+    if (item.isNewline) {
+      while (currentLine.length > 0 && currentLine[currentLine.length - 1].isSpace) {
+        currentLine.pop();
+      }
+      currentLine.isHardBreak = true;
+      lines.push(currentLine);
+      currentLine = [];
+      currentLineWidth = 0;
+      continue;
+    }
+
     if (item.isSpace) {
       if (currentLine.length > 0) currentLine.push(item);
       continue;
@@ -2152,7 +2160,6 @@ btnSave.addEventListener('click', async () => {
         const lineSpacing = patch.fontSize * (patch.lineHeight || 1.3);
         let curY = pH - (patch.customY / RENDER_SCALE) - patch.fontSize;
 
-        // Separar párrafos e ítems por salto de línea
         const rawLines = splitRunsIntoLines(patch.runs || [{ text: patch.newText, bold: false, italic: false, underline: false }]);
         let lastBulletLevel = 0;
         let hasActiveBullet = false;
@@ -2164,12 +2171,10 @@ btnSave.addEventListener('click', async () => {
             continue;
           }
 
-          // Detectar espacios de sangría
           const spaceMatch = lineStr.match(/^(\s*)/);
           const spaceCount = spaceMatch ? spaceMatch[1].length : 0;
           let level = Math.floor(spaceCount / 2);
 
-          // Limpiar espacios al inicio
           let trimmedRuns = lineRuns.map(r => ({ ...r }));
           if (trimmedRuns.length > 0 && spaceCount > 0) {
             trimmedRuns[0].text = trimmedRuns[0].text.replace(/^\s+/, '');
@@ -2188,19 +2193,16 @@ btnSave.addEventListener('click', async () => {
             hasActiveBullet = true;
             lastBulletLevel = level;
           } else if (hasActiveBullet && level === 0 && spaceCount === 0) {
-            // Párrafo perteneciente a la viñeta superior
             level = lastBulletLevel;
           }
 
-          // Geometría de sangría francesa (Hanging Indent)
           const levelIndent = level * 16;
-          const bulletGutter = 16; // Distancia fija que separa el número/viñeta del párrafo
+          const bulletGutter = 16;
 
           const bulletX = (patch.customX / RENDER_SCALE) + levelIndent;
           const textStartX = (patch.customX / RENDER_SCALE) + levelIndent + bulletGutter;
           const blockAvailableWidth = Math.max(40, maxLineWidth - (levelIndent + bulletGutter));
 
-          // Dibujar la viñeta o número en su propia columna a la izquierda
           if (bulletStr) {
             const bFont = mapFont(patch.fontFamily, true, false);
             page.drawText(bulletStr, {
@@ -2212,7 +2214,6 @@ btnSave.addEventListener('click', async () => {
             });
           }
 
-          // Envolver y dibujar el párrafo a la derecha sin tocar la columna izquierda
           const styledWords = getStyledWordsFromRuns(contentRuns);
           const wrappedBlockLines = wrapWordsForBlock(styledWords, patch.fontFamily, patch.fontSize, blockAvailableWidth, mapFont);
           const defaultSpaceWidth = mapFont(patch.fontFamily, false, false).widthOfTextAtSize(' ', patch.fontSize);
