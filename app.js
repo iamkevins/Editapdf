@@ -11,10 +11,11 @@ let detectionBoxes = [];
 let layerSequence = 0;
 let customTextCounter = 20000;
 
-// Variables de Selección Múltiple y Alineación
+// Variables de Selección Múltiple, Alineación y Redimensión
 let isMultiSelectMode = false;
 let multiSelectedItems = [];
 let currentParagraphAlign = 'justify';
+let isResizeModeActive = false;
 
 // =========================================================
 // CARGADOR SEGURO DE PDF-LIB
@@ -222,6 +223,7 @@ const btnEditSelected = document.getElementById('btn-edit-selected');
 const statusBadge = document.getElementById('status-badge');
 const layerBadge = document.getElementById('layer-badge');
 
+const btnToggleResize = document.getElementById('btn-toggle-resize');
 const btnMultiSelect = document.getElementById('btn-multiselect');
 const multiselectCount = document.getElementById('multiselect-count');
 const btnMergeJustify = document.getElementById('btn-merge-justify');
@@ -500,7 +502,7 @@ function updatePatchInList(item, isDeleted = false) {
       textAlign: item.textAlign || 'justify',
       customX: item.left,
       customY: item.top,
-      width: item.getScaledWidth() / RENDER_SCALE,
+      width: (item.width * (item.scaleX || 1)) / RENDER_SCALE,
       lineHeight: item.lineHeight || 1.25,
       isDeleted: isDeleted
     });
@@ -611,7 +613,6 @@ function setParagraphAlign(align) {
   btnAlignRight.classList.toggle('active', align === 'right');
   btnAlignJustify.classList.toggle('active', align === 'justify');
 
-  // Si estamos editando un párrafo en tiempo real, actualizar su visualización
   if (currentTargetObject && (currentTargetObject.type === 'textbox' || currentTargetObject.isUnifiedParagraph)) {
     currentTargetObject.set({ textAlign: align });
     fabricCanvas.renderAll();
@@ -1095,7 +1096,51 @@ btnMergeJustify.addEventListener('click', () => {
 
   clearMultiSelectionStyles();
   showPrecisionTools();
+  btnToggleResize.style.display = 'flex';
   statusBadge.textContent = '¡Párrafo unificado con fondo limpio!';
+});
+
+// =========================================================
+// BOTÓN AMARILLO: MODO REDIMENSIÓN / CAMBIO DE PORTE (MARCO ROJO)
+// =========================================================
+btnToggleResize.addEventListener('click', () => {
+  const active = fabricCanvas.getActiveObject();
+  if (!active || (!active.isUnifiedParagraph && active.type !== 'textbox')) return;
+
+  isResizeModeActive = !isResizeModeActive;
+  btnToggleResize.classList.toggle('active-resize', isResizeModeActive);
+
+  if (isResizeModeActive) {
+    active.set({
+      borderColor: '#ef4444',
+      cornerColor: '#ef4444',
+      cornerStrokeColor: '#ffffff',
+      cornerSize: 14,
+      touchCornerSize: 42,
+      padding: 8,
+      lockScalingY: false,
+      lockScalingX: false
+    });
+    active.setControlsVisibility({
+      tl: true, tr: true, bl: true, br: true,
+      ml: true, mr: true,
+      mt: false, mb: false, mtr: false
+    });
+    statusBadge.textContent = '🔴 Arrastra las esquinas para cambiar el tamaño';
+  } else {
+    active.set({
+      borderColor: '#2563eb',
+      cornerColor: '#2563eb',
+      cornerStrokeColor: '#ffffff',
+      cornerSize: 12,
+      touchCornerSize: 36,
+      padding: 6,
+      lockScalingY: true,
+      lockScalingX: false
+    });
+    statusBadge.textContent = 'Párrafo seleccionado';
+  }
+  fabricCanvas.renderAll();
 });
 
 // =========================================================
@@ -1153,6 +1198,43 @@ pdfInput.addEventListener('change', async (e) => {
   fabricCanvas.on('selection:updated', onSelectionChanged);
   fabricCanvas.on('selection:cleared', clearSelectionUI);
 
+  // Redimensión suave y fluida del párrafo sin alterar tamaño de letra
+  fabricCanvas.on('object:scaling', (e) => {
+    const obj = e.target;
+    if (!obj || (!obj.isUnifiedParagraph && obj.type !== 'textbox')) return;
+
+    let newWidth = obj.width * obj.scaleX;
+
+    let minW = 100;
+    if (typeof obj.getMinWidth === 'function') {
+      minW = Math.max(minW, Math.ceil(obj.getMinWidth()) + 10);
+    }
+
+    if (newWidth < minW) {
+      newWidth = minW;
+    }
+
+    obj.set({
+      width: newWidth,
+      scaleX: 1,
+      scaleY: 1
+    });
+
+    obj.initDimensions();
+    obj.setCoords();
+    updatePatchInList(obj);
+  });
+
+  fabricCanvas.on('object:modified', (e) => {
+    const obj = e.target;
+    if (obj && (obj.isUnifiedParagraph || obj.type === 'textbox')) {
+      obj.set({ scaleX: 1, scaleY: 1 });
+      obj.initDimensions();
+      obj.setCoords();
+      updatePatchInList(obj);
+    }
+  });
+
   fabricCanvas.on('mouse:down', (opt) => {
     const target = opt.target;
     if (!target) return;
@@ -1199,6 +1281,30 @@ function onSelectionChanged(e) {
   const selected = e.selected ? e.selected[0] : fabricCanvas.getActiveObject();
   if (!selected) return;
 
+  const isParagraph = (selected.isUnifiedParagraph || selected.type === 'textbox');
+
+  if (isParagraph) {
+    btnToggleResize.style.display = 'flex';
+    if (isResizeModeActive) {
+      selected.set({
+        borderColor: '#ef4444',
+        cornerColor: '#ef4444',
+        cornerStrokeColor: '#ffffff',
+        lockScalingY: false,
+        lockScalingX: false
+      });
+      selected.setControlsVisibility({
+        tl: true, tr: true, bl: true, br: true,
+        ml: true, mr: true,
+        mt: false, mb: false, mtr: false
+      });
+    }
+  } else {
+    btnToggleResize.style.display = 'none';
+    isResizeModeActive = false;
+    btnToggleResize.classList.remove('active-resize');
+  }
+
   if (selected.isDetectionBox || selected.parentLine || selected.isCustomPdfText) {
     multiSelectedItems = [selected];
     btnMultiSelect.style.display = 'flex';
@@ -1231,6 +1337,9 @@ function clearSelectionUI() {
   statusBadge.textContent = 'Documento listo';
   btnMultiSelect.style.display = 'none';
   btnMergeJustify.style.display = 'none';
+  btnToggleResize.style.display = 'none';
+  isResizeModeActive = false;
+  btnToggleResize.classList.remove('active-resize');
   multiSelectedItems = [];
   hidePrecisionTools();
 }
@@ -1894,7 +2003,6 @@ btnSave.addEventListener('click', async () => {
           let spaceWidth = defaultSpaceWidth;
           let lineStartX = patch.customX / RENDER_SCALE;
 
-          // Cálculo según tipo de alineación
           if (alignMode === 'justify' && !isLastLine && gaps > 0) {
             spaceWidth = Math.max(3, (maxLineWidth - totalWordsWidth) / gaps);
             lineStartX = patch.customX / RENDER_SCALE;
@@ -1904,7 +2012,7 @@ btnSave.addEventListener('click', async () => {
           } else if (alignMode === 'right') {
             const lineTotalW = totalWordsWidth + (gaps * defaultSpaceWidth);
             lineStartX = (patch.customX / RENDER_SCALE) + Math.max(0, maxLineWidth - lineTotalW);
-          } else { // 'left' o última línea de justificado
+          } else {
             lineStartX = patch.customX / RENDER_SCALE;
           }
 
