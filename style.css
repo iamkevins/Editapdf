@@ -490,8 +490,12 @@ html, body {
   border-radius: 6px;
 }
 
-.inline-editor-card textarea {
+/* ÁREA DE TEXTO ENRIQUECIDO EDITABLE */
+.inline-editor-input {
   width: 100%;
+  min-height: 80px;
+  max-height: 190px;
+  overflow-y: auto;
   background: #0f172a;
   color: #ffffff;
   border: 1px solid #475569;
@@ -499,14 +503,28 @@ html, body {
   padding: 10px;
   font-size: 15px;
   font-family: inherit;
-  resize: none;
   outline: none;
   user-select: text;
   -webkit-user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
-.inline-editor-card textarea:focus {
+.inline-editor-input:empty::before {
+  content: attr(placeholder);
+  color: #64748b;
+  pointer-events: none;
+}
+
+.inline-editor-input:focus {
   border-color: #38bdf8;
+}
+
+.inline-editor-input b, 
+.inline-editor-input strong {
+  font-weight: 800;
+  color: #f8fafc;
 }
 
 .editor-actions {
@@ -633,4 +651,3 @@ html, body {
 .tool-btn.danger { background: #dc2626; }
 .tool-btn.active-state { background: #f59e0b !important; }
 .disabled-tool { opacity: 0.4; pointer-events: none; }
-
