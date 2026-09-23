@@ -96,7 +96,7 @@ html, body {
   color: #ffffff !important;
 }
 
-/* BOTÓN AMARILLO REDONDO PARA REDIMENSIÓN DE PÁRRAFO */
+/* BOTÓN AMARILLO REDONDO PARA MODO REDIMENSIÓN DE PÁRRAFO */
 .btn-yellow-resize {
   width: 36px !important;
   height: 36px !important;
@@ -408,14 +408,14 @@ html, body {
 .font-toolbar {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
 .font-select {
   flex: 1;
-  min-width: 130px;
+  min-width: 125px;
   background: #0f172a;
   color: #f8fafc;
   border: 1px solid #475569;
@@ -521,11 +521,11 @@ html, body {
   border-radius: 6px;
 }
 
-/* ÁREA DE TEXTO ENRIQUECIDO Y SANGRÍA FRANCESA VISUAL */
+/* ÁREA DE TEXTO ENRIQUECIDO EDITABLE */
 .inline-editor-input {
   width: 100%;
   min-height: 90px;
-  max-height: 210px;
+  max-height: 200px;
   overflow-y: auto;
   background: #0f172a;
   color: #ffffff;
@@ -540,7 +540,7 @@ html, body {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.45;
-  transition: text-align 0.15s ease;
+  tab-size: 4;
 }
 
 .inline-editor-input:empty::before {
@@ -557,33 +557,6 @@ html, body {
 .inline-editor-input strong {
   font-weight: 800;
   color: #f8fafc;
-}
-
-/* Clases de sangría visual en el editor */
-.editor-list-item-0 {
-  padding-left: 22px;
-  text-indent: -22px;
-  margin-bottom: 5px;
-}
-.editor-list-body-0 {
-  padding-left: 22px;
-  text-indent: 0;
-  margin-bottom: 5px;
-}
-.editor-list-item-1 {
-  padding-left: 44px;
-  text-indent: -22px;
-  margin-bottom: 5px;
-}
-.editor-list-body-1 {
-  padding-left: 44px;
-  text-indent: 0;
-  margin-bottom: 5px;
-}
-.editor-list-item-2 {
-  padding-left: 66px;
-  text-indent: -22px;
-  margin-bottom: 5px;
 }
 
 .editor-actions {
